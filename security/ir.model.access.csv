@@ -1,0 +1,4 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_hr_workers_comp_claim_manager,access_hr_workers_comp_claim.manager,model_hr_workers_comp_claim,base.group_hr_manager,1,1,1,1
+access_hr_workers_comp_injury_manager,access_hr_workers_comp_injury.manager,model_hr_workers_comp_injury,base.group_hr_manager,1,1,1,1
+access_hr_workers_comp_resolution_manager,access_hr_workers_comp_resolution.manager,model_hr_workers_comp_resolution,base.group_hr_manager,1,1,1,1

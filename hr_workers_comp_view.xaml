@@ -1,0 +1,138 @@
+!!! xml1.0
+~openerp
+    ~data
+
+        // Workers Compensation Claims
+
+        ~record model='ir.ui.view' #hr_workers_comp_claim_form
+            @name: hr.workers_comp.claim.form
+            @model: hr.workers_comp.claim
+            @arch type='xml'
+                ~form $Worker_Compensation_Claim version='7.0'
+                    ~group
+                        ~group
+                            @employee_id invisible="context.get('hide_employee' ,True)" options="{'create':False, 'create_edit':False, 'limit':15, 'no_open':True}"
+                            @state_claim_id
+                        ~group
+                            @injury_id options="{'create':False, 'create_edit':False, 'limit':15, 'no_open':True}"
+                            @location_id options="{'create':False, 'create_edit':False, 'limit':15, 'no_open':True}"
+                    ~group col='6'
+                        ~group
+                            @injury_date
+                            @full_duty_return
+                            @full_duty_lost
+                        ~group
+                            @no_duty_start
+                            @no_duty_end
+                            @no_duty_total
+                        ~group
+                            @restricted_duty_start
+                            @restricted_duty_end
+                            @restricted_duty_total
+                    ~group
+                        ~separator $Notes colspan='2'
+                        @notes nolabel='1'
+
+        ~record model='ir.ui.view' #hr_workers_comp_claim_tree
+            @name: hr.workers_comp.claim.tree
+            @model: hr.workers_comp.claim
+            @arch type='xml'
+                ~tree $Worker_Compensation_Claims
+                    @employee_id invisible="context.get('hide_employee' ,True)"
+                    @injury_id
+                    @restriction_state
+                    @state
+
+        ~record model='ir.ui.view' #hr_workers_comp_claim_filter
+            @name: hr.workers_comp.claim.tree
+            @model: hr.workers_comp.claim
+            @arch type='xml'
+                ~search $Workers_Compensation_Claims
+                    @employee_id
+                    @injury_id
+                    @restriction_state
+                    ~separator
+                    ~filter $Open_Claims @type_open domain="[('state','=','open')]"
+                    ~filter $Closed_Claims @type_closed domain="[('state','=','closed')]"
+                    ~separator
+                    ~filter $Full_Restriction @type_restricted domain="[('restriction_state','=','none')]"
+                    ~filter $Light_Duty @type_light domain="[('restriction_state','=','light')]"
+                    ~filter $No_Duty @type_full domain="[('restriction_state','=','full')]"
+                    ~group expand='0' string='Group by...'
+                        ~filter @restriction_state $Duty_Level context="{'group_by':'restriction_state'}"
+                        ~filter @injury_id $Injury context="{'group_by':'injury_id'}"
+                        ~filter @location_id $Location context="{'group_by':'location_id'}"
+                    
+
+        ~record model='ir.actions.act_window' #hr_workers_comp_claim_action
+            @name: Workers Compensation Claims
+            @res_model: hr.workers_comp.claim
+            @view_type: form
+            @view_mode: tree,form
+            @search_view_id ref='hr_workers_comp_claim_filter'
+            @context: {'hide_employee': False}
+
+        ~menuitem @Claims #base.menu_hr_claims parent='hr.menu_hr_root' groups='base.group_hr_manager'
+        ~menuitem name='Workers Compensation' #menu_hr_workers_comp parent='base.menu_hr_claims' action='hr_workers_comp_claim_action'
+        ~menuitem name='Workers Compensation' #menu_hr_workers_comp_configuration parent='hr.menu_hr_configuration'
+
+        // configuration for injuries and resolutions
+
+        ~record model='ir.ui.view' #hr_workers_comp_injury_form
+            @name: hr.workers_comp.injury.form
+            @model: hr.workers_comp.injury
+            @arch type='xml'
+                ~form $Injury version='7.0'
+                    @name
+
+        ~record model='ir.ui.view' #hr_workers_comp_injury_tree
+            @name: hr.workers_comp.injury.tree
+            @model: hr.workers_comp.injury
+            @arch type='xml'
+                ~tree $Injury
+                    @name
+
+        ~record model='ir.actions.act_window' #hr_workers_comp_injury_action
+            @name: Injuries
+            @res_model: hr.workers_comp.injury
+            @view_type: form
+            @view_mode: tree,form
+
+        ~menuitem name='Injuries' #menu_hr_workers_comp_injury parent='menu_hr_workers_comp_configuration' action='hr_workers_comp_injury_action'
+
+        ~record model='ir.ui.view' #hr_workers_comp_resolution_form
+            @name: hr.workers_comp.resolution.form
+            @model: hr.workers_comp.resolution
+            @arch type='xml'
+                ~form $Injury version='7.0'
+                    @name
+
+        ~record model='ir.ui.view' #hr_workers_comp_resolution_tree
+            @name: hr.workers_comp.resolution.tree
+            @model: hr.workers_comp.resolution
+            @arch type='xml'
+                ~tree $Injury
+                    @name
+
+        ~record model='ir.actions.act_window' #hr_workers_comp_resolution_action
+            @name: Resolutions
+            @res_model: hr.workers_comp.resolution
+            @view_type: form
+            @view_mode: tree,form
+
+        ~menuitem name='Resolutions' #menu_hr_workers_comp_resolution parent='menu_hr_workers_comp_configuration' action='hr_workers_comp_resolution_action'
+
+        // employee integration
+
+        ~record model='ir.ui.view' #hr_employee_workers_comp_form
+            @name: hr.employee.form
+            @model: hr.employee
+            @inherit_id ref='hr.view_employee_form'
+            @priority eval='16'
+            @arch type='xml'
+                ~xpath expr="//page[@name='Claims']" position='attributes'
+                    ~attribute @invisible: False
+                ~page @Claims position='inside'
+                    ~separator $Workers_Compensation_Claims
+                    @worker_comp_claim_ids context="{'default_employee_id': active_id}"
+
