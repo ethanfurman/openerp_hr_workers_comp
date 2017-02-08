@@ -65,12 +65,12 @@ class hr_workers_comp_claim(osv.Model):
                     ),
                 },
             ),
-        'restricted_duty_start': fields.date('Start date of restricted duty'),
-        'restricted_duty_end': fields.date('End date of restricted duty'),
+        'restricted_duty_start': fields.date('Start partial restriction'),
+        'restricted_duty_end': fields.date('End partial restriction'),
         'restricted_duty_total': fields.function(
             _total_days,
             type='integer',
-            string='Total restricted days',
+            string='Total partial restriction',
             multi='dates',
             store={
                 'hr.workers_comp.claim': (
@@ -80,12 +80,12 @@ class hr_workers_comp_claim(osv.Model):
                     ),
                 },
             ),
-        'no_duty_start': fields.date('Start date of full restriction'),
-        'no_duty_end': fields.date('End date of full restriction'),
+        'no_duty_start': fields.date('Start full restriction'),
+        'no_duty_end': fields.date('End full restriction'),
         'no_duty_total': fields.function(
             _total_days,
             type='integer',
-            string='Total full restriction days',
+            string='Total full restriction',
             multi='dates',
             store={
                 'hr.workers_comp.claim': (
