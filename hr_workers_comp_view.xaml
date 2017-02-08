@@ -41,6 +41,7 @@
             @arch type='xml'
                 ~tree $Worker_Compensation_Claims
                     @employee_id invisible="context.get('hide_employee' ,True)"
+                    @injury_date
                     @injury_id
                     @restriction_state
                     @state
