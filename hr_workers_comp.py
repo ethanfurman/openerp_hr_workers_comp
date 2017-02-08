@@ -100,13 +100,13 @@ class hr_workers_comp_claim(osv.Model):
         res = {}
         res['value'] = value = {}
         today = Date(fields.date.context_today(self, cr, uid, context=context))
-        inj, fdr = Date(inj), Date(fdr) or today
-        rds, rde = Date(rds), Date(rde) or today
-        nds, nde = Date(nds), Date(nde) or today
+        inj, fdr = Date(inj or None), Date(fdr or None) or today
+        rds, rde = Date(rds or None), Date(rde or None) or today
+        nds, nde = Date(nds or None), Date(nde or None) or today
         if inj:
             value['full_duty_lost'] = (fdr - inj).days
         if rds:
-            value['restricted_total'] = (rde - rds).days
+            value['restricted_duty_total'] = (rde - rds).days
         if nds:
             value['no_duty_total'] = (nde - nds).days
         return res
