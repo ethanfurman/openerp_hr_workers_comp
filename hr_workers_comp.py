@@ -97,6 +97,10 @@ class hr_workers_comp_claim(osv.Model):
             ),
         }
 
+    _defaults = {
+        'state': 'open',
+        }
+
     def onchange_dates(self, cr, uid, ids, inj, fdr, nds, nde, rds, rde, context=None):
         res = {}
         res['value'] = value = {}
