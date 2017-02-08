@@ -50,6 +50,7 @@ class hr_workers_comp_claim(osv.Model):
         'location_id': fields.many2one('hr.department', 'Location of Accident'),
         'notes': fields.text('Notes'),
         'state_claim_id': fields.char('State Claim Number', size=64),
+        'resolution_id': fields.many2one('hr.workers_comp.resolution', 'Resolution'),
         'full_duty_return': fields.date('Return to full duty'),
         'full_duty_lost': fields.function(
             _total_days,
