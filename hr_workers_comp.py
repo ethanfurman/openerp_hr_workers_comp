@@ -45,13 +45,16 @@ class hr_workers_comp_claim(osv.Model):
             sort_order='definition',
             ),
         'employee_id': fields.many2one('hr.employee', 'Employee'),
-        'injury_id': fields.many2one('hr.workers_comp.injury', 'Injury'),
+        'injury_ids': fields.many2many(
+            'hr.workers_comp.injury',
+            'claim2injury_rel', 'claim_id', 'injury_id',
+            string='Injury',
+            ),
         'injury_date': fields.date('Injury Date'),
-        'location_id': fields.many2one('hr.department', 'Location of Accident'),
+        'location_id': fields.many2one('hr.department', 'Accident Location'),
         'notes': fields.text('Notes'),
+        'notes_ids': fields.one2many('hr.workers_comp.history', 'claim_id', 'Notes'),
         'state_claim_id': fields.char('State Claim Number', size=64),
-        'resolution_id': fields.many2one('hr.workers_comp.resolution', 'Resolution'),
-        'full_duty_return': fields.date('Return to full duty'),
         'full_duty_lost': fields.function(
             _total_days,
             type='integer',
@@ -65,12 +68,10 @@ class hr_workers_comp_claim(osv.Model):
                     ),
                 },
             ),
-        'restricted_duty_start': fields.date('Start partial restriction'),
-        'restricted_duty_end': fields.date('End partial restriction'),
         'restricted_duty_total': fields.function(
             _total_days,
             type='integer',
-            string='Total partial restriction',
+            string='Partial restriction days',
             multi='dates',
             store={
                 'hr.workers_comp.claim': (
@@ -80,12 +81,10 @@ class hr_workers_comp_claim(osv.Model):
                     ),
                 },
             ),
-        'no_duty_start': fields.date('Start full restriction'),
-        'no_duty_end': fields.date('End full restriction'),
         'no_duty_total': fields.function(
             _total_days,
             type='integer',
-            string='Total full restriction',
+            string='Full restriction days',
             multi='dates',
             store={
                 'hr.workers_comp.claim': (
@@ -128,10 +127,14 @@ class hr_workers_comp_claim(osv.Model):
             self.write(cr, uid, id, totals)
         return True
 
+    def button_hr_workers_comp_close(self, cr, uid, ids, context=None):
+        return self.write(cr, uid, ids, {'state': 'closed'}, context=context)
+
 
 class hr_workers_comp_injury(osv.Model):
-    "workers comp injury"
+    "workers comp injury type"
     _name = 'hr.workers_comp.injury'
+    _desc = "workers comp injury"
 
     _columns = {
         'name': fields.char('Description', size=128),
@@ -141,17 +144,37 @@ class hr_workers_comp_injury(osv.Model):
             ('injury_uniq', 'unique(name)', 'This injury already exists.'),
             ]
 
-class hr_workers_comp_resolution(osv.Model):
-    "workers comp claim resolution"
-    _name = 'hr.workers_comp.resolution'
+class hr_workers_comp_duty_type(osv.Model):
+    "workers comp duty type"
+    _name = 'hr.workers_comp.duty_type'
+    _desc = "workers comp claim duty type"
 
     _columns = {
         'name': fields.char('Description', size=128),
         }
 
     _sql_constraints = [
-            ('resolution_uniq', 'unique(name)', 'This resolution already exists.'),
+            ('duty_uniq', 'unique(name)', 'This duty already exists.'),
             ]
+
+
+class hr_workers_comp_history(osv.Model):
+    "workers comp  history"
+    _name = 'hr.workers_comp.history'
+    _desc = "workers comp claim history entry"
+
+    _columns = {
+        'claim_id': fields.many2one('hr.workers_comp.claim', 'Claim #'),
+        'create_date': fields.date('Date note entered', readonly=True),
+        'write_uid': fields.many2one('res.users', 'Entered by'),
+        'effective_date': fields.date('Effective Date', help='date this change takes effect'),
+        'note': fields.text('Note'),
+        'duty_id': fields.many2one('hr.workers_comp.duty_type', 'Duty Level'),
+        }
+
+    _defaults = {
+        'effective_date': fields.date.context_today,
+        }
 
 class workers_comp_hr(osv.Model):
     "add link from hr.employee to hr_workers_comp_claim"

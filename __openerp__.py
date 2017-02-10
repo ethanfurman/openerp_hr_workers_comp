@@ -18,6 +18,7 @@ This application allows you to track injuries by department, type, and time lost
         'hr',
         ],
     'data' : [
+        'hr_workers_comp_data.xaml',
         'hr_workers_comp_view.xaml',
         'security/ir.model.access.csv',
         ],

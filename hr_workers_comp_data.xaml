@@ -1,0 +1,39 @@
+!!!xml1.0
+
+-duty_type = 'hr.workers_comp.duty_type'
+-partner_type = 'sample.partner_type'
+
+~openerp
+    ~data noupdate='0'
+
+        ~record model=duty_type #cleared
+            @name: Cleared
+
+        ~record model=duty_type #five
+            @name: Light Duty - No Lifting over 05 pounds
+
+        ~record model=duty_type #ten
+            @name: Light Duty - No Lifting over 10 pounds
+
+        ~record model=duty_type #fifteen
+            @name: Light Duty - No Lifting over 15 pounds
+
+        ~record model=duty_type #twenty
+            @name: Light Duty - No Lifting over 20 pounds
+
+        ~record model=duty_type #twentyfive
+            @name: Light Duty - No Lifting over 25 pounds
+
+        ~record model=duty_type #pushing
+            @name: Light Duty - No pushing or pulling
+
+        ~record model=duty_type #sitting
+            @name: Light Duty - No repetitive sitting / standing
+
+        ~record model=duty_type #none
+            @name: No Duties (out)
+
+        ~record model=duty_type #return
+            @name: Returned to work
+
+
