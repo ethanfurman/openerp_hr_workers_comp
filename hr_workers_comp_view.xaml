@@ -158,3 +158,19 @@
                     ~separator $Workers_Compensation_Claims
                     @worker_comp_claim_ids context="{'default_employee_id': active_id}"
 
+    ~data noupdate='1'
+
+        // scheduled jobs
+
+        ~record model='ir.cron' #hr_workers_comp_claim_update
+            @name: HR Workers Comp Claim Update
+            @interval_number: 1
+            @interval_type: days
+            @numbercall: -1
+            @doall eval='False'
+            @model eval="'hr.workers_comp.claim'"
+            @function eval="'recalc_days'"
+            @args eval="'()'"
+            @nextcall eval="'2017-02-14 21:15:00'"
+            @priority: 100
+
