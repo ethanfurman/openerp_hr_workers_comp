@@ -134,6 +134,9 @@ class hr_workers_comp_claim(osv.Model):
     def button_hr_workers_comp_close(self, cr, uid, ids, context=None):
         return self.write(cr, uid, ids, {'state': 'closed'}, context=context)
 
+    def button_hr_workers_comp_reopen(self, cr, uid, ids, context=None):
+        return self.write(cr, uid, ids, {'state': 'open'}, context=context)
+
 
 class hr_workers_comp_injury(osv.Model):
     "workers comp injury type"
