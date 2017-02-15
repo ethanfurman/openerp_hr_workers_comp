@@ -12,6 +12,12 @@ class hr_workers_comp_claim(osv.Model):
     "workers comp information fields"
     _name = 'hr.workers_comp.claim'
 
+    def _construct_initial_note(self, cr, uid, context=None):
+        ir_model_data = self.pool.get('ir.model.data')
+        duty_id = ir_model_data.get_object_reference(cr, uid, 'hr_workers_comp', 'duty_none')[1]
+        today = fields.date.context_today(self, cr, uid, context=context)
+        return [[0, False, {'duty_id': duty_id, 'effective_date': today}]]
+
     def _total_days(self, cr, uid, ids, field_names=None, arg=None, context=None):
         if isinstance(ids, (int, long)):
             ids = [ids]
@@ -93,6 +99,8 @@ class hr_workers_comp_claim(osv.Model):
     _defaults = {
         'state': 'open',
         'restriction_state': 'full',
+        'injury_date': fields.date.context_today,
+        'notes_ids': _construct_initial_note,
         }
 
     def onchange_dates(self, cr, uid, ids, injury_date, notes_ids, context=None):
