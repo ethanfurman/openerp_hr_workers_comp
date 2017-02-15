@@ -62,6 +62,7 @@
                     @injury_date
                     @restriction_state
                     @state
+                    @location_id
 
         ~record model='ir.ui.view' #hr_workers_comp_claim_filter
             @name: hr.workers_comp.claim.tree
