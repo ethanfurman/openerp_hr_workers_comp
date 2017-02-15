@@ -45,6 +45,7 @@ class hr_workers_comp_claim(osv.Model):
             sort_order='definition',
             ),
         'employee_id': fields.many2one('hr.employee', 'Employee'),
+        'notification_date': fields.date('Notified on', help='Date employee notified us of injury'),
         'injury_ids': fields.many2many(
             'hr.workers_comp.injury',
             'claim2injury_rel', 'claim_id', 'injury_id',
@@ -55,6 +56,9 @@ class hr_workers_comp_claim(osv.Model):
         'notes': fields.text('Notes'),
         'notes_ids': fields.one2many('hr.workers_comp.history', 'claim_id', 'Notes'),
         'state_claim_id': fields.char('State Claim Number', size=64),
+        'attorney': fields.boolean('Attorney', help='Has employee retained a lawyer?'),
+        'reserved_amount': fields.float('Reserved Funds', help='Amount set aside to pay this claim.'),
+        'paid_amount': fields.float('Paid Funds', help='Amount paid to employee so far.'),
         'full_duty_lost': fields.function(
             _total_days,
             type='integer',
