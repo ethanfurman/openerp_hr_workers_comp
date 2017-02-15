@@ -6,34 +6,55 @@
 ~openerp
     ~data noupdate='0'
 
-        ~record model=duty_type #cleared
-            @name: Cleared
+        ~record model=duty_type #duty_cleared
+            @name: Cleared of all restrictions
+            @restriction: none
 
-        ~record model=duty_type #five
+        ~record model=duty_type #duty_five
             @name: Light Duty - No Lifting over 05 pounds
+            @restriction: light
 
-        ~record model=duty_type #ten
+        ~record model=duty_type #duty_ten
             @name: Light Duty - No Lifting over 10 pounds
+            @restriction: light
 
-        ~record model=duty_type #fifteen
+        ~record model=duty_type #duty_fifteen
             @name: Light Duty - No Lifting over 15 pounds
+            @restriction: light
 
-        ~record model=duty_type #twenty
+        ~record model=duty_type #duty_twenty
             @name: Light Duty - No Lifting over 20 pounds
+            @restriction: light
 
-        ~record model=duty_type #twentyfive
+        ~record model=duty_type #duty_twentyfive
             @name: Light Duty - No Lifting over 25 pounds
+            @restriction: light
 
-        ~record model=duty_type #pushing
+        ~record model=duty_type #duty_pushing
             @name: Light Duty - No pushing or pulling
+            @restriction: light
 
-        ~record model=duty_type #sitting
+        ~record model=duty_type #duty_sitting
             @name: Light Duty - No repetitive sitting / standing
+            @restriction: light
 
-        ~record model=duty_type #none
-            @name: No Duties (out)
+        ~record model=duty_type #duty_full
+            @name: Full Restriction - No Duties
+            @restriction: full
 
-        ~record model=duty_type #return
+        ~record model=duty_type #duty_quit
+            @name: No longer an employee - Employee Quit
+            @restriction: na
+
+        ~record model=duty_type #duty_fired
+            @name: No longer an employee - Employee Terminated
+            @restriction: na
+
+        ~record model=duty_type #duty_settlement
+            @name: No longer an employee - Settlement Paid
+            @restriction: na
+
+        ~record model=duty_type #duty_returned
             @name: Returned to work
-
+            @restriction: none
 

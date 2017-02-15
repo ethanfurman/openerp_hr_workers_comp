@@ -120,7 +120,10 @@
             @model: hr.workers_comp.duty_type
             @arch type='xml'
                 ~form $Duty_Level version='7.0'
-                    @name
+                    ~group
+                        ~group
+                            @name
+                            @restriction
 
         ~record model='ir.ui.view' #hr_workers_comp_duty_type_tree
             @name: hr.workers_comp.duty_type.tree
@@ -128,6 +131,7 @@
             @arch type='xml'
                 ~tree $Duty_Level default_order='name'
                     @name
+                    @restriction
 
         ~record model='ir.actions.act_window' #hr_workers_comp_duty_type_action
             @name: Duty Types

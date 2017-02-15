@@ -151,6 +151,18 @@ class hr_workers_comp_duty_type(osv.Model):
 
     _columns = {
         'name': fields.char('Description', size=128),
+        'restriction': fields.selection((
+            ('full', 'No duties'),
+            ('light', 'Light Duties'),
+            ('none', 'Normal duties'),
+            ('na', 'N/A'),
+            ),
+            string='Restriction level',
+            help='No Duties -> Full restriction, no work\n'
+                 'Light Duties -> light duties\n'
+                 'Normal Duties -> No restrictions, normal work\n'
+                 'N/A -> No longer employed',
+            ),
         }
 
     _sql_constraints = [
