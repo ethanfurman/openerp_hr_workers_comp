@@ -22,21 +22,18 @@
                             @reserved_amount widget='monetary'
                             @paid_amount widget='monetary'
                         ~group
-                            @injury_date
+                            @injury_date on_change='onchange_dates(injury_date, notes_ids)'
                             @notification_date
                             @location_id options="{'create':False, 'create_edit':False, 'limit':15, 'no_open':True}"
-                    ~group
-                        ~group
-                            @injury_ids options="{'create':False, 'create_edit':False, 'limit':15, 'no_open':True}" nolabel='1'
+                            @injury_ids colspan='2' options="{'create':False, 'create_edit':False, 'limit':15, 'no_open':True}" nolabel='1'
                                 ~tree default_order='name'
                                     @name $Injuries
-                        ~group
                             @no_duty_total
                             @restricted_duty_total
                             @full_duty_lost $Days_lost
                     ~group
                         ~separator $History colspan='4'
-                        @notes_ids nolabel='1' context="{'default_claim_id': active_id}" colspan='4'
+                        @notes_ids nolabel='1' context="{'default_claim_id': active_id}" colspan='4' on_change='onchange_dates(injury_date, notes_ids)'
                             ~tree default_order='effective_date'
                                 @claim_id invisible='1'
                                 @create_date readonly='1' $Entered
@@ -81,8 +78,8 @@
                     ~filter $No_Duty @type_full domain="[('restriction_state','=','full')]"
                     ~group expand='0' string='Group by...'
                         ~filter @restriction_state $Duty_Level context="{'group_by':'restriction_state'}"
-                        ~filter @injury_ids $Injury context="{'group_by':'injury_ids'}"
                         ~filter @location_id $Location context="{'group_by':'location_id'}"
+                        ~filter @injury_date $Injury_Date context="{'group_by':'injury_date'}"
                     
 
         ~record model='ir.actions.act_window' #hr_workers_comp_claim_action

@@ -1,9 +1,13 @@
+#imports
 import logging
+from fnx import date
+from openerp.exceptions import ERPError
 from osv import osv, fields
-from dbf import Date
+from VSS.finance import FederalHoliday
 
 _logger = logging.getLogger(__name__)
 
+#tables
 class hr_workers_comp_claim(osv.Model):
     "workers comp information fields"
     _name = 'hr.workers_comp.claim'
@@ -12,25 +16,8 @@ class hr_workers_comp_claim(osv.Model):
         if isinstance(ids, (int, long)):
             ids = [ids]
         res = {}
-        records = self.read(
-                cr, uid, ids,
-                fields=[
-                    'id', 'injury_date', 'full_duty_return',
-                    'restricted_duty_start', 'restricted_duty_end',
-                    'no_duty_start', 'no_duty_end',
-                    ],
-                context=context,
-                )
-        for rec in records:
-            id = rec['id']
-            inj, fdr = rec['injury_date'], rec['full_duty_return']
-            rds, rde = rec['restricted_duty_start'], rec['restricted_duty_end']
-            nds, nde = rec['no_duty_start'], rec['no_duty_end']
-            res[id] = self.onchange_dates(
-                    cr, uid, id,
-                    inj, fdr, nds, nde, rds, rde,
-                    context=context,
-                    )['value']
+        for rec in self.browse(cr, uid, ids, context=context):
+            res[rec.id] = self.onchange_dates(cr, uid, rec.id, rec.injury_date, rec.notes_ids, context=context)['value']
         return res
 
     _columns = {
@@ -71,6 +58,7 @@ class hr_workers_comp_claim(osv.Model):
                     10,
                     ),
                 },
+            help='Full restriction = 1 day lost\nPartial restriction = 0.5 days lost',
             ),
         'restricted_duty_total': fields.function(
             _total_days,
@@ -84,6 +72,7 @@ class hr_workers_comp_claim(osv.Model):
                     10,
                     ),
                 },
+            help='Number of days of light work.',
             ),
         'no_duty_total': fields.function(
             _total_days,
@@ -93,10 +82,11 @@ class hr_workers_comp_claim(osv.Model):
             store={
                 'hr.workers_comp.claim': (
                     lambda table, cr, uid, ids, ctx=None: ids,
-                    ['injury_date', 'no_duty_start', 'no_duty_end'],
+                    ['injury_date', 'notes_ids'],
                     10,
                     ),
                 },
+            help='Number of days of no work',
             ),
         }
 
@@ -105,19 +95,98 @@ class hr_workers_comp_claim(osv.Model):
         'restriction_state': 'full',
         }
 
-    def onchange_dates(self, cr, uid, ids, inj, fdr, nds, nde, rds, rde, context=None):
+    def onchange_dates(self, cr, uid, ids, injury_date, notes_ids, context=None):
         res = {}
         res['value'] = value = {}
-        today = Date(fields.date.context_today(self, cr, uid, context=context))
-        inj, fdr = Date(inj or None), Date(fdr or None) or today
-        rds, rde = Date(rds or None), Date(rde or None) or today
-        nds, nde = Date(nds or None), Date(nde or None) or today
-        if inj:
-            value['full_duty_lost'] = (fdr - inj).days
-        if rds:
-            value['restricted_duty_total'] = (rde - rds).days
-        if nds:
-            value['no_duty_total'] = (nde - nds).days
+        today = date(fields.date.context_today(self, cr, uid, context=context))
+        injury_date = date(injury_date)
+        lost = 0
+        full_lost = 0
+        partial_lost = 0
+        if not injury_date:
+            return {'value': {
+                        'full_duty_lost': 0,
+                        'restricted_duty_total': 0,
+                        'no_duty_total': 0,
+                        }}
+        note_history = self.pool.get('hr.workers_comp.history')
+        duty_type = self.pool.get('hr.workers_comp.duty_type')
+        duty = dict([(r['id'], r['restriction']) for r in duty_type.read(cr, uid, context=context)])
+        if not notes_ids:
+            notes = [('Full', today)]
+        else:
+            if isinstance(notes_ids[0], list):
+                # from web form
+                notes = []
+                for note in notes_ids:
+                    if note[0] == 0:
+                        # create
+                        # [[0, False, {'note': False, 'effective_date': '2017-02-02', 'duty_id': 22}]]
+                        notes.append((duty[note[2]['duty_id']], date(note[2]['effective_date'])))
+                    elif note[0] == 1:
+                        # update (so read old record and apply updates)
+                        # [1, 15, {'effective_date': '2017-01-17'}]
+                        note_update = note[2]
+                        note = note_history.browse(cr, uid, note[1], context=context)
+                        duty_id = note_update.get('duty_id')
+                        if duty_id is None:
+                            restriction = note.duty_id.restriction
+                        else:
+                            restriction = duty[duty_id]
+                        eff_date = date(note_update.get('effective_date'))
+                        if not eff_date:
+                            eff_date = date(note.effective_date)
+                        if restriction is None or eff_date is False:
+                            # no recorded restriction and/or date, nothing we can calculate with this record
+                            continue
+                        notes.append((restriction, eff_date))
+                    elif note[0] in (2, 3, 5):
+                        # various flavors of unlink
+                        pass
+                    elif note[0] == 4:
+                        # link
+                        # [[4, 10, False]]
+                        note = note_history.browse(cr, uid, note[1], context=context)
+                        notes.append((note.duty_id.restriction, date(note.effective_date)))
+            else:
+                # from function field
+                # [note1, note2, note3, ...]
+                for note in notes_ids:
+                    print note, note.duty_id, note.duty_id.restriction, note.effective_date
+                notes = [(note.duty_id.restriction, note.effective_date) for note in notes_ids]
+            notes.append((None, today))
+        # ensure date sortation
+        notes.sort(key=lambda p: p[1])
+        # remove any items that take effect after today
+        restriction = 'full'
+        last_date = injury_date
+        while notes[-1][1] > today:
+            notes.pop()
+        for restriction_level, eff_date in notes:
+            # duty_state = duty_state.lower()
+            if restriction_level is None:
+                # fix entry for today
+                restriction_level = restriction
+            # calculate number of days in last state
+            if restriction_level in ('none', 'na'):
+                # unless those were no-restriction days
+                restriction = restriction_level
+                continue
+            days = FederalHoliday.count_business_days(last_date, eff_date)
+            if restriction == 'full':
+                lost += days
+                full_lost += days
+            elif restriction == 'light':
+                lost += 0.5 * days
+                partial_lost += days
+            else:
+                raise ERPError('Bug!', 'unknown restriction state: %r' % restriction_level)
+            restriction = restriction_level
+            last_date = eff_date
+
+        value['full_duty_lost'] = lost + 0.5  # round up
+        value['restricted_duty_total'] = partial_lost
+        value['no_duty_total'] = full_lost
         return res
 
     def recalc_days(self, cr, uid, *args):
