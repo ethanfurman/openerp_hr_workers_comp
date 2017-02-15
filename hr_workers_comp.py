@@ -159,8 +159,6 @@ class hr_workers_comp_claim(osv.Model):
             else:
                 # from function field
                 # [note1, note2, note3, ...]
-                for note in notes_ids:
-                    print note, note.duty_id, note.duty_id.restriction, note.effective_date
                 notes = [(note.duty_id.restriction, note.effective_date) for note in notes_ids]
             notes.append((None, today))
         # ensure date sortation
