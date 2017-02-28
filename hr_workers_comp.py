@@ -14,7 +14,7 @@ class hr_workers_comp_claim(osv.Model):
 
     def _construct_initial_note(self, cr, uid, context=None):
         ir_model_data = self.pool.get('ir.model.data')
-        duty_id = ir_model_data.get_object_reference(cr, uid, 'hr_workers_comp', 'duty_none')[1]
+        duty_id = ir_model_data.get_object_reference(cr, uid, 'hr_workers_comp', 'duty_full')[1]
         today = fields.date.context_today(self, cr, uid, context=context)
         return [[0, False, {'duty_id': duty_id, 'effective_date': today}]]
 
