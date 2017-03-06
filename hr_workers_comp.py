@@ -183,14 +183,14 @@ class hr_workers_comp_claim(osv.Model):
                 lost += days
                 full_lost += days
             elif restriction == 'light':
-                lost += 0.5 * days
+                lost += days
                 partial_lost += days
             else:
                 raise ERPError('Bug!', 'unknown restriction state: %r' % restriction_level)
             restriction = restriction_level
             last_date = eff_date
 
-        value['full_duty_lost'] = lost + 0.5  # round up
+        value['full_duty_lost'] = lost
         value['restricted_duty_total'] = partial_lost
         value['no_duty_total'] = full_lost
         return res
