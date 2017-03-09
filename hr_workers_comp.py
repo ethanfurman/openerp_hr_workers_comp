@@ -1,4 +1,5 @@
 #imports
+from __future__ import print_function
 import logging
 from fnx import date
 from openerp.exceptions import ERPError
@@ -17,6 +18,15 @@ class hr_workers_comp_claim(osv.Model):
         duty_id = ir_model_data.get_object_reference(cr, uid, 'hr_workers_comp', 'duty_full')[1]
         today = fields.date.context_today(self, cr, uid, context=context)
         return [[0, False, {'duty_id': duty_id, 'effective_date': today}]]
+
+    def _get_claim_ids(hr_workers_comp_history, cr, uid, ids, context=None):
+        records = hr_workers_comp_history.read(cr, uid, ids, fields=['claim_id'], context=context)
+        claim_ids = []
+        for rec in records:
+            claim = rec['claim_id']
+            if claim:
+                claim_ids.append(claim[0])
+        return claim_ids
 
     def _total_days(self, cr, uid, ids, field_names=None, arg=None, context=None):
         if isinstance(ids, (int, long)):
@@ -60,8 +70,13 @@ class hr_workers_comp_claim(osv.Model):
             store={
                 'hr.workers_comp.claim': (
                     lambda table, cr, uid, ids, ctx=None: ids,
-                    ['injury_date', 'full_duty'],
+                    ['notes_ids'],
                     10,
+                    ),
+                'hr.workers_comp.history': (
+                    _get_claim_ids,
+                    ['effective_date', 'duty_id'],
+                    15,
                     ),
                 },
             help='Full restriction = 1 day lost\nPartial restriction = 0.5 days lost',
@@ -74,8 +89,13 @@ class hr_workers_comp_claim(osv.Model):
             store={
                 'hr.workers_comp.claim': (
                     lambda table, cr, uid, ids, ctx=None: ids,
-                    ['injury_date', 'restricted_duty_start', 'restricted_duty_end'],
+                    ['notes_ids'],
                     10,
+                    ),
+                'hr.workers_comp.history': (
+                    _get_claim_ids,
+                    ['effective_date', 'duty_id'],
+                    15,
                     ),
                 },
             help='Number of days of light work.',
@@ -88,8 +108,13 @@ class hr_workers_comp_claim(osv.Model):
             store={
                 'hr.workers_comp.claim': (
                     lambda table, cr, uid, ids, ctx=None: ids,
-                    ['injury_date', 'notes_ids'],
+                    ['notes_ids'],
                     10,
+                    ),
+                'hr.workers_comp.history': (
+                    _get_claim_ids,
+                    ['effective_date', 'duty_id'],
+                    15,
                     ),
                 },
             help='Number of days of no work',
@@ -100,94 +125,98 @@ class hr_workers_comp_claim(osv.Model):
         'state': 'open',
         'restriction_state': 'full',
         'injury_date': fields.date.context_today,
-        'notes_ids': _construct_initial_note,
         }
 
-    def onchange_dates(self, cr, uid, ids, injury_date, notes_ids, context=None):
+    def onchange_dates(self, cr, uid, ids, injury, notes_ids, context=None):
         res = {}
         res['value'] = value = {}
         today = date(fields.date.context_today(self, cr, uid, context=context))
-        injury_date = date(injury_date)
+        injury_date = date(injury)
         lost = 0
         full_lost = 0
         partial_lost = 0
-        if not injury_date:
-            return {'value': {
+        if not notes_ids:
+            res = {}
+            res['value'] = value = {}
+            if injury_date:
+                value['notes_ids'] = [{'effective_date': injury, 'note': '<add text and action>', 'write_uid': uid}]
+            value.update({
                         'full_duty_lost': 0,
                         'restricted_duty_total': 0,
                         'no_duty_total': 0,
-                        }}
+                        })
+            return res
         note_history = self.pool.get('hr.workers_comp.history')
         duty_type = self.pool.get('hr.workers_comp.duty_type')
         duty = dict([(r['id'], r['restriction']) for r in duty_type.read(cr, uid, context=context)])
-        if not notes_ids:
-            notes = [('Full', today)]
+        notes = []
+        if isinstance(notes_ids[0], list):
+            # from web form
+            for note in notes_ids:
+                if note[0] == 0:
+                    # create
+                    # [[0, False, {'note': False, 'effective_date': '2017-02-02', 'duty_id': 22}]]
+                    duty_id = note[2].get('duty_id')
+                    if duty_id is None:
+                        continue
+                    notes.append((duty[duty_id], date(note[2]['effective_date'])))
+                elif note[0] == 1:
+                    # update (so read old record and apply updates)
+                    # [1, 15, {'effective_date': '2017-01-17'}]
+                    note_update = note[2]
+                    note = note_history.browse(cr, uid, note[1], context=context)
+                    duty_id = note_update.get('duty_id')
+                    if duty_id is None:
+                        restriction = note.duty_id.restriction
+                    else:
+                        restriction = duty[duty_id]
+                    eff_date = date(note_update.get('effective_date'))
+                    if not eff_date:
+                        eff_date = date(note.effective_date)
+                    if restriction is None or eff_date is False:
+                        # no recorded restriction and/or date, nothing we can calculate with this record
+                        continue
+                    notes.append((restriction, eff_date))
+                elif note[0] in (2, 3, 5):
+                    # various flavors of unlink
+                    pass
+                elif note[0] == 4:
+                    # link
+                    # [[4, 10, False]]
+                    note = note_history.browse(cr, uid, note[1], context=context)
+                    notes.append((note.duty_id.restriction, date(note.effective_date)))
         else:
-            if isinstance(notes_ids[0], list):
-                # from web form
-                notes = []
-                for note in notes_ids:
-                    if note[0] == 0:
-                        # create
-                        # [[0, False, {'note': False, 'effective_date': '2017-02-02', 'duty_id': 22}]]
-                        notes.append((duty[note[2]['duty_id']], date(note[2]['effective_date'])))
-                    elif note[0] == 1:
-                        # update (so read old record and apply updates)
-                        # [1, 15, {'effective_date': '2017-01-17'}]
-                        note_update = note[2]
-                        note = note_history.browse(cr, uid, note[1], context=context)
-                        duty_id = note_update.get('duty_id')
-                        if duty_id is None:
-                            restriction = note.duty_id.restriction
-                        else:
-                            restriction = duty[duty_id]
-                        eff_date = date(note_update.get('effective_date'))
-                        if not eff_date:
-                            eff_date = date(note.effective_date)
-                        if restriction is None or eff_date is False:
-                            # no recorded restriction and/or date, nothing we can calculate with this record
-                            continue
-                        notes.append((restriction, eff_date))
-                    elif note[0] in (2, 3, 5):
-                        # various flavors of unlink
-                        pass
-                    elif note[0] == 4:
-                        # link
-                        # [[4, 10, False]]
-                        note = note_history.browse(cr, uid, note[1], context=context)
-                        notes.append((note.duty_id.restriction, date(note.effective_date)))
-            else:
-                # from function field
-                # [note1, note2, note3, ...]
-                notes = [(note.duty_id.restriction, note.effective_date) for note in notes_ids]
-            notes.append((None, today))
+            # from function field
+            # [note1, note2, note3, ...]
+            notes = [(note.duty_id.restriction, date(note.effective_date)) for note in notes_ids]
+        notes.append((None, today))
         # ensure date sortation
         notes.sort(key=lambda p: p[1])
         # remove any items that take effect after today
-        restriction = 'full'
+        last_restriction = 'none'
         last_date = injury_date
         while notes[-1][1] > today:
             notes.pop()
         for restriction_level, eff_date in notes:
-            # duty_state = duty_state.lower()
             if restriction_level is None:
                 # fix entry for today
-                restriction_level = restriction
+                restriction_level = 'none'
             # calculate number of days in last state
-            if restriction_level in ('none', 'na'):
+            if last_restriction in ('none', 'na'):
                 # unless those were no-restriction days
-                restriction = restriction_level
+                last_restriction = restriction_level
+                last_date = eff_date
                 continue
             days = FederalHoliday.count_business_days(last_date, eff_date)
-            if restriction == 'full':
+            if last_restriction == 'full':
                 lost += days
                 full_lost += days
-            elif restriction == 'light':
+            elif last_restriction == 'light':
                 lost += days
                 partial_lost += days
             else:
-                raise ERPError('Bug!', 'unknown restriction state: %r' % restriction_level)
-            restriction = restriction_level
+                raise ERPError('Bug!', 'unknown restriction state: %r' % last_restriction)
+            last_restriction = restriction_level
             last_date = eff_date
 
         value['full_duty_lost'] = lost
