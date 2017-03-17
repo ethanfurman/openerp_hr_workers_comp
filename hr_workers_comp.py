@@ -155,11 +155,15 @@ class hr_workers_comp_claim(osv.Model):
             for note in notes_ids:
                 if note[0] == 0:
                     # create
-                    # [[0, False, {'note': False, 'effective_date': '2017-02-02', 'duty_id': 22}]]
+                    # [0, False, {'note': False, 'effective_date': '2017-02-02', 'duty_id': 22}]
                     duty_id = note[2].get('duty_id')
-                    if duty_id is None:
+                    if not duty_id:
                         continue
-                    notes.append((duty[duty_id], date(note[2]['effective_date'])))
+                    try:
+                        notes.append((duty[duty_id], date(note[2]['effective_date'])))
+                    except Exception:
+                        _logger.exception('bad note: %r', note)
+                        raise
                 elif note[0] == 1:
                     # update (so read old record and apply updates)
                     # [1, 15, {'effective_date': '2017-01-17'}]
