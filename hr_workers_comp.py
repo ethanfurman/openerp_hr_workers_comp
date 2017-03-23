@@ -47,7 +47,7 @@ class hr_workers_comp_claim(osv.Model):
             'Duty',
             sort_order='definition',
             ),
-        'employee_id': fields.many2one('hr.employee', 'Employee'),
+        'employee_id': fields.many2one('hr.employee', 'Employee', ondelete='restrict'),
         'notification_date': fields.date('Notified on', help='Date employee notified us of injury'),
         'injury_ids': fields.many2many(
             'hr.workers_comp.injury',
