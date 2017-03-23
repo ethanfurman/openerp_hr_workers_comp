@@ -16,7 +16,7 @@
                     ~group
                         ~group
                             @state invisible='1'
-                            @employee_id invisible="context.get('hide_employee' ,True)" options="{'create':False, 'create_edit':False, 'limit':15, 'no_open':True}" required='1'
+                            @employee_id invisible="context.get('hide_employee' ,True)" options="{'create':False, 'create_edit':False, 'limit':15, 'no_open':False}" required='1'
                             @state_claim_id
                             @attorney $Attorney_Retained
                             @reserved_amount widget='monetary'
