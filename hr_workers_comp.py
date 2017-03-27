@@ -125,9 +125,15 @@ class hr_workers_comp_claim(osv.Model):
         'state': 'open',
         'restriction_state': 'full',
         'injury_date': fields.date.context_today,
+        'notes_ids': lambda s, c, uid, ctx:
+                [{
+                    'effective_date': fields.date.context_today(s, c, uid, context=ctx),
+                    'note': '<add text and action>', 'write_uid': uid,
+                    }],
         }
 
     def onchange_dates(self, cr, uid, ids, injury, notes_ids, context=None):
+        # also called by nightly update routine
         res = {}
         res['value'] = value = {}
         today = date(fields.date.context_today(self, cr, uid, context=context))
@@ -138,8 +144,6 @@ class hr_workers_comp_claim(osv.Model):
         if not notes_ids:
             res = {}
             res['value'] = value = {}
-            if injury_date:
-                value['notes_ids'] = [{'effective_date': injury, 'note': '<add text and action>', 'write_uid': uid}]
             value.update({
                         'full_duty_lost': 0,
                         'restricted_duty_total': 0,
