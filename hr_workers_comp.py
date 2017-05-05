@@ -318,3 +318,8 @@ class workers_comp_hr(osv.Model):
             string='Workers Compensation Claims',
             )
         }
+
+    fields.apply_groups(
+        _columns,
+        {'base.group_hr_manager': ['worker_comp_claim_ids']},
+        )
