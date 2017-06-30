@@ -30,7 +30,7 @@
                                     @name $Injuries
                             @no_duty_total
                             @restricted_duty_total
-                            @full_duty_lost $Days_lost
+                            @full_duty_lost $Total_days
                     ~group
                         ~separator $History colspan='4'
                         @notes_ids nolabel='1' context="{'default_claim_id': active_id}" colspan='4' on_change='onchange_dates(injury_date, notes_ids)'
