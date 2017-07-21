@@ -57,7 +57,6 @@ class TestCalculations(common.TransactionCase):
 
     def test_create_and_write(self):
         cr, uid = self.cr, self.uid
-        # print('creating claim')
         new_claim_id = self.hr_claim.create(
                 cr, uid,
                 {
@@ -66,7 +65,6 @@ class TestCalculations(common.TransactionCase):
                     'injury_date': '2017-02-07',
                     },
                 )
-        # print('new claim id:', new_claim_id)
         note_id_1 = self.hr_history.create(
                 cr, uid,
                 {
@@ -75,7 +73,6 @@ class TestCalculations(common.TransactionCase):
                     'duty_id': self.light_restriction_id,
                     },
                 )
-        # print('new note id:', note_id_1)
         note_id_2 = self.hr_history.create(
                 cr, uid,
                 {
@@ -84,18 +81,9 @@ class TestCalculations(common.TransactionCase):
                     'duty_id': self.no_restriction_id,
                     },
                 )
-        # print('new note id:', note_id_2)
         self.assertTrue(
                 self.hr_claim.write(cr, uid, new_claim_id, {'notes_ids': [(6, 0, [note_id_1, note_id_2])]})
                 )
-        # test
-        # claim = hr_claim.browse(cr, uid, new_claim_id)
-        # print(claim.injury_date)
-        # print(claim.full_duty_lost)
-        # print(claim.restricted_duty_total)
-        # print(claim.no_duty_total)
-        # self.assertTrue(claim.full_duty_lost == claim.no_duty_total == claim.restricted_duty_total == 0)
-        # self.assertEqual(claim.restricted_duty_total, 5)
         [claim] = self.hr_claim.read(
                 cr, uid, [new_claim_id],
                 fields=['full_duty_lost', 'no_duty_total', 'restricted_duty_total'],
