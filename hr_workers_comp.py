@@ -132,6 +132,11 @@ class hr_workers_comp_claim(osv.Model):
                     }],
         }
 
+    def write(self, cr, uid, ids, values, context=None):
+        if 'notes_ids' in values:
+            values['notes_ids'] = [t for t in values['notes_ids'] if t[0] != 4]
+        return super(hr_workers_comp_claim, self).write(cr, uid, ids, values, context=context)
+
     def onchange_dates(self, cr, uid, ids, injury, notes_ids, context=None):
         # also called by nightly update routine
         res = {}
@@ -306,6 +311,7 @@ class hr_workers_comp_history(osv.Model):
     _defaults = {
         'effective_date': fields.date.context_today,
         }
+
 
 class workers_comp_hr(osv.Model):
     "add link from hr.employee to hr_workers_comp_claim"
