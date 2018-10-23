@@ -156,11 +156,12 @@ class hr_workers_comp_claim(osv.Model):
                         'total_days': 0,
                         'restricted_duty_total': 0,
                         'no_duty_total': 0,
+                        'restriction_state': 'none',
                         })
             return res
         note_history = self.pool.get('hr.workers_comp.history')
         duty_type = self.pool.get('hr.workers_comp.duty_type')
-        duty = dict([(r['id'], r['restriction']) for r in duty_type.read(cr, uid, context=context)])
+        duty_restrictions = dict([(r['id'], r['restriction']) for r in duty_type.read(cr, uid, context=context)])
         notes = []
         if isinstance(notes_ids[0], list):
             # from web form
@@ -172,7 +173,10 @@ class hr_workers_comp_claim(osv.Model):
                     if not duty_id:
                         continue
                     try:
-                        notes.append((duty[duty_id], date(note[2]['evaluation_date'])))
+                        duty = duty_restrictions[duty_id]
+                        eval_date = date(note[2]['evaluation_date'])
+                        if duty != 'na':
+                            notes.append((duty, eval_date))
                     except Exception:
                         _logger.exception('bad note: %r', note)
                         raise
@@ -184,10 +188,10 @@ class hr_workers_comp_claim(osv.Model):
                     duty_id = note_update.get('duty_id')
                     if duty_id is None:
                         restriction = note.duty_id.restriction
-                    elif duty_id is False:
+                    elif duty_id in ('na', False):
                         continue
                     else:
-                        restriction = duty[duty_id]
+                        restriction = duty_restrictions[duty_id]
                     eval_date = date(note_update.get('evaluation_date'))
                     if not eval_date:
                         eval_date = date(note.evaluation_date)
@@ -202,24 +206,30 @@ class hr_workers_comp_claim(osv.Model):
                     # link
                     # [[4, 10, False]]
                     note = note_history.browse(cr, uid, note[1], context=context)
+                    duty = note.duty_id.restriction
+                    if duty in ('na', False):
+                        continue
+                    eval_date = date(note.evaluation_date)
                     notes.append((note.duty_id.restriction, date(note.evaluation_date)))
         else:
             # from function field
             # [note1, note2, note3, ...]
-            notes = [(note.duty_id.restriction, date(note.evaluation_date)) for note in notes_ids]
-        # ensure date sortation
-        notes.sort(key=lambda p: p[1])
+            notes = [
+                    (note.duty_id.restriction, date(note.evaluation_date))
+                    for note in notes_ids
+                    if note.duty_id.restriction != 'na'
+                    ]
         if notes and notes[-1][1] < today:
             notes.append((None, today))
-        # remove any items that take effect after today
-        # while notes[-1][1] > today:
-        #     notes.pop()
+        last_duty = 'none'
         last_restriction = 'none'
         last_date = injury_date
         for restriction_level, eval_date in notes:
             if restriction_level is None:
                 # fix entry for today
                 restriction_level = 'none'
+            elif restriction_level != 'est_none':
+                last_duty = restriction_level
             # calculate number of days in last state
             if last_restriction == 'none':
                 # unless those were no-restriction days
@@ -239,7 +249,7 @@ class hr_workers_comp_claim(osv.Model):
                 raise ERPError('Bug!', 'unknown restriction state: %r' % last_restriction)
             last_restriction = restriction_level
             last_date = eval_date
-
+        value['restriction_state'] = last_duty
         value['total_days'] = int(restricted + no_duty)
         value['restricted_duty_total'] = int(restricted)
         value['no_duty_total'] = int(no_duty)
@@ -309,6 +319,7 @@ class hr_workers_comp_history(osv.Model):
     "workers comp  history"
     _name = 'hr.workers_comp.history'
     _desc = "workers comp claim history entry"
+    _order = "evaluation_date"
 
     _columns = {
         'claim_id': fields.many2one('hr.workers_comp.claim', 'Claim #'),

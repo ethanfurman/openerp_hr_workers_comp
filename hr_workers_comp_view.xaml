@@ -12,7 +12,7 @@
                     ~header
                         ~button @button_hr_workers_comp_close $Close .oe_edit_hide type='object' attrs="{'invisible': [('state','=','closed')]}"
                         ~button @button_hr_workers_comp_reopen $Re-Open .oe_edit_hide type='object' attrs="{'invisible': [('state','=','open')]}"
-                        @restriction_state widget='statusbar' clickable='1'
+                        @restriction_state widget='statusbar'
                     ~group
                         ~group
                             @state invisible='1'
@@ -28,9 +28,9 @@
                             @injury_ids colspan='2' options="{'create':False, 'create_edit':False, 'limit':15, 'no_open':True}" nolabel='1'
                                 ~tree default_order='name'
                                     @name $Injuries
-                            @no_duty_total
-                            @restricted_duty_total
-                            @total_days $Total_days
+                            @no_duty_total readonly='1'
+                            @restricted_duty_total readonly='1'
+                            @total_days $Total_days readonly='1'
                     ~group
                         ~separator $History colspan='4'
                         @notes_ids nolabel='1' context="{'default_claim_id': active_id}" colspan='4' on_change='onchange_dates(injury_date, notes_ids, state)'
