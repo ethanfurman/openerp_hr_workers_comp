@@ -1,12 +1,14 @@
 #imports
 from __future__ import print_function
 import logging
+from datetime import timedelta
 from fnx import date
 from openerp.exceptions import ERPError
 from osv import osv, fields
-from VSS.finance import FederalHoliday
 
 _logger = logging.getLogger(__name__)
+
+ONE_DAY = timedelta(1)
 
 #tables
 class hr_workers_comp_claim(osv.Model):
@@ -17,7 +19,7 @@ class hr_workers_comp_claim(osv.Model):
         ir_model_data = self.pool.get('ir.model.data')
         duty_id = ir_model_data.get_object_reference(cr, uid, 'hr_workers_comp', 'duty_full')[1]
         today = fields.date.context_today(self, cr, uid, context=context)
-        return [[0, False, {'duty_id': duty_id, 'effective_date': today}]]
+        return [[0, False, {'duty_id': duty_id, 'evaluation_date': today}]]
 
     def _get_claim_ids(hr_workers_comp_history, cr, uid, ids, context=None):
         records = hr_workers_comp_history.read(cr, uid, ids, fields=['claim_id'], context=context)
@@ -33,7 +35,7 @@ class hr_workers_comp_claim(osv.Model):
             ids = [ids]
         res = {}
         for rec in self.browse(cr, uid, ids, context=context):
-            res[rec.id] = self.onchange_dates(cr, uid, rec.id, rec.injury_date, rec.notes_ids, context=context)['value']
+            res[rec.id] = self.onchange_dates(cr, uid, rec.id, rec.injury_date, rec.notes_ids, rec.state, context=context)['value']
         return res
 
     _columns = {
@@ -62,10 +64,11 @@ class hr_workers_comp_claim(osv.Model):
         'attorney': fields.boolean('Attorney', help='Has employee retained a lawyer?'),
         'reserved_amount': fields.float('Reserved Funds', help='Amount set aside to pay this claim.'),
         'paid_amount': fields.float('Paid Funds', help='Amount paid to employee so far.'),
-        'full_duty_lost': fields.function(
+        'total_days': fields.function(
             _total_days,
+            fnct_inv=True,
             type='integer',
-            string='Full days lost',
+            string='Total days',
             multi='dates',
             store={
                 'hr.workers_comp.claim': (
@@ -75,16 +78,18 @@ class hr_workers_comp_claim(osv.Model):
                     ),
                 'hr.workers_comp.history': (
                     _get_claim_ids,
-                    ['effective_date', 'duty_id'],
+                    ['evaluation_date', 'duty_id'],
                     15,
                     ),
                 },
-            help='Full restriction = 1 day lost\nPartial restriction = 0.5 days lost',
+            help='Restricted days + days away from work',
+            oldname='full_duty_lost',
             ),
         'restricted_duty_total': fields.function(
             _total_days,
+            fnct_inv=True,
             type='integer',
-            string='Partial restriction days',
+            string='Restricted duties/job transfer days',
             multi='dates',
             store={
                 'hr.workers_comp.claim': (
@@ -94,16 +99,17 @@ class hr_workers_comp_claim(osv.Model):
                     ),
                 'hr.workers_comp.history': (
                     _get_claim_ids,
-                    ['effective_date', 'duty_id'],
+                    ['evaluation_date', 'duty_id'],
                     15,
                     ),
                 },
-            help='Number of days of light work.',
+            help='Number of days of restricted duties.',
             ),
         'no_duty_total': fields.function(
             _total_days,
+            fnct_inv=True,
             type='integer',
-            string='Full restriction days',
+            string='Days away from work',
             multi='dates',
             store={
                 'hr.workers_comp.claim': (
@@ -113,7 +119,7 @@ class hr_workers_comp_claim(osv.Model):
                     ),
                 'hr.workers_comp.history': (
                     _get_claim_ids,
-                    ['effective_date', 'duty_id'],
+                    ['evaluation_date', 'duty_id'],
                     15,
                     ),
                 },
@@ -125,11 +131,11 @@ class hr_workers_comp_claim(osv.Model):
         'state': 'open',
         'restriction_state': 'full',
         'injury_date': fields.date.context_today,
-        'notes_ids': lambda s, c, uid, ctx:
-                [{
-                    'effective_date': fields.date.context_today(s, c, uid, context=ctx),
-                    'note': '<add text and action>', 'write_uid': uid,
-                    }],
+        # 'notes_ids': lambda s, c, uid, ctx:
+        #         [{
+        #             'evaluation_date': fields.date.context_today(s, c, uid, context=ctx),
+        #             'note': '<add text and action>', 'write_uid': uid,
+        #             }],
         }
 
     def write(self, cr, uid, ids, values, context=None):
@@ -137,20 +143,17 @@ class hr_workers_comp_claim(osv.Model):
             values['notes_ids'] = [t for t in values['notes_ids'] if t[0] != 4]
         return super(hr_workers_comp_claim, self).write(cr, uid, ids, values, context=context)
 
-    def onchange_dates(self, cr, uid, ids, injury, notes_ids, context=None):
+    def onchange_dates(self, cr, uid, ids, injury, notes_ids, claim_state, context=None):
         # also called by nightly update routine
         res = {}
         res['value'] = value = {}
         today = date(fields.date.context_today(self, cr, uid, context=context))
         injury_date = date(injury)
-        lost = 0
-        full_lost = 0
-        partial_lost = 0
+        restricted = DayCounter()
+        no_duty = DayCounter()
         if not notes_ids:
-            res = {}
-            res['value'] = value = {}
             value.update({
-                        'full_duty_lost': 0,
+                        'total_days': 0,
                         'restricted_duty_total': 0,
                         'no_duty_total': 0,
                         })
@@ -164,32 +167,34 @@ class hr_workers_comp_claim(osv.Model):
             for note in notes_ids:
                 if note[0] == 0:
                     # create
-                    # [0, False, {'note': False, 'effective_date': '2017-02-02', 'duty_id': 22}]
+                    # [0, False, {'note': False, 'evaluation_date': '2017-02-02', 'duty_id': 22}]
                     duty_id = note[2].get('duty_id')
                     if not duty_id:
                         continue
                     try:
-                        notes.append((duty[duty_id], date(note[2]['effective_date'])))
+                        notes.append((duty[duty_id], date(note[2]['evaluation_date'])))
                     except Exception:
                         _logger.exception('bad note: %r', note)
                         raise
                 elif note[0] == 1:
                     # update (so read old record and apply updates)
-                    # [1, 15, {'effective_date': '2017-01-17'}]
+                    # [1, 15, {'evaluation_date': '2017-01-17'}]
                     note_update = note[2]
                     note = note_history.browse(cr, uid, note[1], context=context)
                     duty_id = note_update.get('duty_id')
                     if duty_id is None:
                         restriction = note.duty_id.restriction
+                    elif duty_id is False:
+                        continue
                     else:
                         restriction = duty[duty_id]
-                    eff_date = date(note_update.get('effective_date'))
-                    if not eff_date:
-                        eff_date = date(note.effective_date)
-                    if restriction is None or eff_date is False:
+                    eval_date = date(note_update.get('evaluation_date'))
+                    if not eval_date:
+                        eval_date = date(note.evaluation_date)
+                    if restriction is None or eval_date is False:
                         # no recorded restriction and/or date, nothing we can calculate with this record
                         continue
-                    notes.append((restriction, eff_date))
+                    notes.append((restriction, eval_date))
                 elif note[0] in (2, 3, 5):
                     # various flavors of unlink
                     pass
@@ -197,55 +202,60 @@ class hr_workers_comp_claim(osv.Model):
                     # link
                     # [[4, 10, False]]
                     note = note_history.browse(cr, uid, note[1], context=context)
-                    notes.append((note.duty_id.restriction, date(note.effective_date)))
+                    notes.append((note.duty_id.restriction, date(note.evaluation_date)))
         else:
             # from function field
             # [note1, note2, note3, ...]
-            notes = [(note.duty_id.restriction, date(note.effective_date)) for note in notes_ids]
-        notes.append((None, today))
+            notes = [(note.duty_id.restriction, date(note.evaluation_date)) for note in notes_ids]
         # ensure date sortation
         notes.sort(key=lambda p: p[1])
+        if notes and notes[-1][1] < today:
+            notes.append((None, today))
         # remove any items that take effect after today
+        # while notes[-1][1] > today:
+        #     notes.pop()
         last_restriction = 'none'
         last_date = injury_date
-        while notes[-1][1] > today:
-            notes.pop()
-        for restriction_level, eff_date in notes:
+        for restriction_level, eval_date in notes:
             if restriction_level is None:
                 # fix entry for today
                 restriction_level = 'none'
             # calculate number of days in last state
-            if last_restriction in ('none', 'na'):
+            if last_restriction == 'none':
                 # unless those were no-restriction days
                 last_restriction = restriction_level
-                last_date = eff_date
+                last_date = eval_date
                 continue
-            days = FederalHoliday.count_business_days(last_date, eff_date)
+            if last_restriction in ('na', restriction_level):
+                continue
+            days = eval_date - last_date - ONE_DAY
+            if last_restriction in ('light', 'full') and restriction_level in ('light', 'full'):
+                days += ONE_DAY
             if last_restriction == 'full':
-                lost += days
-                full_lost += days
+                no_duty += days
             elif last_restriction == 'light':
-                lost += days
-                partial_lost += days
+                restricted += days
             else:
                 raise ERPError('Bug!', 'unknown restriction state: %r' % last_restriction)
             last_restriction = restriction_level
-            last_date = eff_date
+            last_date = eval_date
 
-        value['full_duty_lost'] = lost
-        value['restricted_duty_total'] = partial_lost
-        value['no_duty_total'] = full_lost
+        value['total_days'] = int(restricted + no_duty)
+        value['restricted_duty_total'] = int(restricted)
+        value['no_duty_total'] = int(no_duty)
         return res
 
     def recalc_days(self, cr, uid, *args):
         """
         recalculate lost and restricted days
         """
-        # get open claims
+        _logger.info('running recalc_dates')
+        # get all claims
         ids = self.search(cr, uid, [('state','=','open')])
         res = self._total_days(cr, uid, ids)
         for id, totals in res.items():
             self.write(cr, uid, id, totals)
+        _logger.info('done')
         return True
 
     def button_hr_workers_comp_close(self, cr, uid, ids, context=None):
@@ -282,6 +292,7 @@ class hr_workers_comp_duty_type(osv.Model):
             ('na', 'N/A'),
             ),
             string='Restriction level',
+            required=True,
             help='No Duties -> Full restriction, no work\n'
                  'Light Duties -> light duties\n'
                  'Normal Duties -> No restrictions, normal work\n'
@@ -303,13 +314,13 @@ class hr_workers_comp_history(osv.Model):
         'claim_id': fields.many2one('hr.workers_comp.claim', 'Claim #'),
         'create_date': fields.date('Date note entered', readonly=True),
         'write_uid': fields.many2one('res.users', 'Entered by'),
-        'effective_date': fields.date('Effective Date', help='date this change takes effect'),
+        'evaluation_date': fields.date('Effective Date', help='date this change takes effect', oldname='effective_date'),
         'note': fields.text('Note'),
         'duty_id': fields.many2one('hr.workers_comp.duty_type', 'Duty Level'),
         }
 
     _defaults = {
-        'effective_date': fields.date.context_today,
+        'evaluation_date': fields.date.context_today,
         }
 
 
@@ -329,3 +340,110 @@ class workers_comp_hr(osv.Model):
         _columns,
         {'base.group_hr_manager': ['worker_comp_claim_ids']},
         )
+
+
+class DayCounter(object):
+
+    def __init__(self, value=0):
+        self.value = value
+
+    def __add__(self, other):
+        if isinstance(other, self.__class__):
+            value = self.value + other.value
+        elif isinstance(other, int):
+            value = self.value + other
+        elif isinstance(other, timedelta):
+            if other.seconds:
+                return NotImplemented
+            value = self.value + other.days
+        else:
+            return NotImplemented
+        return self.__class__(value)
+
+    __radd__ = __add__
+
+    def __iadd__(self, other):
+        if isinstance(other, self.__class__):
+            self.value += other.value
+        elif isinstance(other, int):
+            self.value += other
+        elif isinstance(other, timedelta):
+            if other.seconds:
+                return NotImplemented
+            self.value += other.days
+        else:
+            return NotImplemented
+        return self
+
+    def __sub__(self, other):
+        if isinstance(other, self.__class__):
+            value = self.value - other.value
+        elif isinstance(other, int):
+            value = self.value - other
+        elif isinstance(other, timedelta):
+            if other.seconds:
+                return NotImplemented
+            value = self.value - other.days
+        else:
+            return NotImplemented
+        return self.__class__(value)
+
+    def __rsub__(self, other):
+        if isinstance(other, self.__class__):
+            value = other.value - self.value
+        elif isinstance(other, int):
+            value = other - self.value
+        elif isinstance(other, timedelta):
+            if other.seconds:
+                return NotImplemented
+            value = other.days - self.value
+        else:
+            return NotImplemented
+        return self.__class__(value)
+
+    def __isub__(self, other):
+        if isinstance(other, self.__class__):
+            self.value -= other.value
+        elif isinstance(other, int):
+            self.value -= other
+        elif isinstance(other, timedelta):
+            if other.seconds:
+                return NotImplemented
+            self.value -= other.days
+        else:
+            return NotImplemented
+        return self
+
+    def __mul__(self, other):
+        if isinstance(other, self.__class__):
+            value = self.value * other.value
+        elif isinstance(other, int):
+            value = self.value * other
+        elif isinstance(other, timedelta):
+            if other.seconds:
+                return NotImplemented
+            value = self.value * other.days
+        else:
+            return NotImplemented
+        return self.__class__(value)
+
+    __rmul__ = __mul__
+
+    def __imul__(self, other):
+        if isinstance(other, self.__class__):
+            self.value *= other.value
+        elif isinstance(other, int):
+            self.value *= other
+        elif isinstance(other, timedelta):
+            if other.seconds:
+                return NotImplemented
+            self.value *= other.days
+        else:
+            return NotImplemented
+        return self
+
+    def __int__(self):
+        return self.value
+
+    def __repr__(self):
+        return 'DayCounter(%r)' % self.value

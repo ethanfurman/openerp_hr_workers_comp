@@ -22,7 +22,7 @@
                             @reserved_amount widget='monetary'
                             @paid_amount widget='monetary'
                         ~group
-                            @injury_date on_change='onchange_dates(injury_date, notes_ids)'
+                            @injury_date on_change='onchange_dates(injury_date, notes_ids, state)'
                             @notification_date
                             @location_id options="{'create':False, 'create_edit':False, 'limit':15, 'no_open':True}"
                             @injury_ids colspan='2' options="{'create':False, 'create_edit':False, 'limit':15, 'no_open':True}" nolabel='1'
@@ -30,15 +30,15 @@
                                     @name $Injuries
                             @no_duty_total
                             @restricted_duty_total
-                            @full_duty_lost $Total_days
+                            @total_days $Total_days
                     ~group
                         ~separator $History colspan='4'
-                        @notes_ids nolabel='1' context="{'default_claim_id': active_id}" colspan='4' on_change='onchange_dates(injury_date, notes_ids)'
-                            ~tree default_order='effective_date'
+                        @notes_ids nolabel='1' context="{'default_claim_id': active_id}" colspan='4' on_change='onchange_dates(injury_date, notes_ids, state)'
+                            ~tree default_order='evaluation_date'
                                 @claim_id invisible='1'
                                 @create_date readonly='1' $Entered
                                 @write_uid readonly='1' $By
-                                @effective_date $Effective
+                                @evaluation_date $Evaluated
                                 @note
                                 @duty_id $Action
                             ~form
@@ -46,7 +46,7 @@
                                     ~group
                                         @note
                                     ~group
-                                        @effective_date
+                                        @evaluation_date
                                         @duty_id options="{'create':False, 'create_edit':False, 'limit':15, 'no_open':True}"
                                             ~tree default_order='name'
 
