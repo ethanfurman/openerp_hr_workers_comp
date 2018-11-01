@@ -6,55 +6,75 @@
 ~openerp
     ~data noupdate='0'
 
-        ~record model=duty_type #duty_cleared
-            @name: Cleared of all restrictions
-            @restriction: none
+        ~record model=duty_type #full_restriction
+            @name: Complete Restriction
+            @active eval='True'
 
-        ~record model=duty_type #duty_five
-            @name: Light Duty - No Lifting over 05 pounds
-            @restriction: light
-
-        ~record model=duty_type #duty_ten
-            @name: Light Duty - No Lifting over 10 pounds
-            @restriction: light
-
-        ~record model=duty_type #duty_fifteen
-            @name: Light Duty - No Lifting over 15 pounds
-            @restriction: light
-
-        ~record model=duty_type #duty_twenty
-            @name: Light Duty - No Lifting over 20 pounds
-            @restriction: light
-
-        ~record model=duty_type #duty_twentyfive
-            @name: Light Duty - No Lifting over 25 pounds
-            @restriction: light
-
-        ~record model=duty_type #duty_pushing
-            @name: Light Duty - No pushing or pulling
-            @restriction: light
-
-        ~record model=duty_type #duty_sitting
-            @name: Light Duty - No repetitive sitting / standing
-            @restriction: light
-
-        ~record model=duty_type #duty_full
-            @name: Full Restriction - No Duties
-            @restriction: full
-
-        ~record model=duty_type #duty_quit
-            @name: No longer an employee - Employee Quit
-            @restriction: na
-
-        ~record model=duty_type #duty_fired
-            @name: No longer an employee - Employee Terminated
-            @restriction: na
-
-        ~record model=duty_type #duty_settlement
-            @name: No longer an employee - Settlement Paid
-            @restriction: na
-
-        ~record model=duty_type #duty_returned
+        ~record model=duty_type #employee_returned_to_work
             @name: Returned to work
-            @restriction: none
+            @active eval='True'
+
+        ~record model=duty_type #employee_cleared_to_work
+            @name: Medically cleared of all restrictions
+            @active eval='True'
+
+        ~record model=duty_type #restriction_office_work_only
+            @name: Office work only
+            @active eval='True'
+
+        ~record model=duty_type #restriction_no_driving
+            @name: No driving
+            @active eval='True'
+
+        ~record model=duty_type #restriction_left_hand
+            @name: No use of left hand
+            @active eval='True'
+
+        ~record model=duty_type #restriction_right_hand
+            @name: No use of right hand
+            @active eval='True'
+
+        ~record model=duty_type #restriction_five
+            @name: No Lifting over 05 pounds
+            @active eval='True'
+
+        ~record model=duty_type #restriction_ten
+            @name: No Lifting over 10 pounds
+            @active eval='True'
+
+        ~record model=duty_type #restriction_fifteen
+            @name: No Lifting over 15 pounds
+            @active eval='True'
+
+        ~record model=duty_type #restriction_twenty
+            @name: No Lifting over 20 pounds
+            @active eval='True'
+
+        ~record model=duty_type #restriction_twentyfive
+            @name: No Lifting over 25 pounds
+            @active eval='True'
+
+        ~record model=duty_type #restriction_pushing
+            @name: No pushing / pulling
+            @active eval='True'
+
+        ~record model=duty_type #restriction_sitting
+            @name: No repetitive sitting / standing
+            @active eval='True'
+
+        ~record model=duty_type #employee_quit
+            @name: No longer an employee - Employee Quit
+            @active eval='True'
+
+        ~record model=duty_type #employee_fired
+            @name: No longer an employee - Employee Terminated
+            @active eval='True'
+
+        ~record model=duty_type #employee_settled
+            @name: No longer an employee - Settlement Paid
+            @active eval='True'
+
+        ~record model=duty_type #incomplete
+            @name: INCOMPLETE
+            @active eval='True'
 

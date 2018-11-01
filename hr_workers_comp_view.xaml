@@ -12,7 +12,7 @@
                     ~header
                         ~button @button_hr_workers_comp_close $Close .oe_edit_hide type='object' attrs="{'invisible': [('state','=','closed')]}"
                         ~button @button_hr_workers_comp_reopen $Re-Open .oe_edit_hide type='object' attrs="{'invisible': [('state','=','open')]}"
-                        @restriction_state widget='statusbar'
+                        @restriction_state_id widget='statusbar' statusbar_visible='...'
                     ~group
                         ~group
                             @state invisible='1'
@@ -40,15 +40,22 @@
                                 @write_uid readonly='1' $By
                                 @evaluation_date $Evaluated
                                 @note
-                                @duty_id $Action
-                            ~form
+                                @restriction
+                                @duty_id $Ability attrs="{'invisible': [('restriction','in',[False,'na']),('duty_id','=',False)], 'required': [('restriction','!=','na')]}"
+                            ~form setup='onchange_restriction(restriction, duty_id)'
                                 ~group
                                     ~group
-                                        @note
+                                        ~div
+                                            ~label for='note'
+                                            @note nolabel='1'
                                     ~group
-                                        @evaluation_date
-                                        @duty_id options="{'create':False, 'create_edit':False, 'limit':15, 'no_open':True}"
-                                            ~tree default_order='name'
+                                        ~div
+                                            ~label for='evaluation_date'
+                                            @evaluation_date nolabel='1'
+                                            ~label for='restriction'
+                                            @restriction nolabel='1' on_change='onchange_restriction(restriction, duty_id)'
+                                            ~label for='duty_id' attrs="{'invisible': [('restriction','in',[False,'na']),('duty_id','=',False)]}"
+                                            @duty_id nolabel='1' attrs="{'invisible': [('restriction','in',[False,'na']),('duty_id','=',False)], 'required': [('restriction','!=','na')]}" options="{'create':False, 'create_edit':False, 'limit':30, 'no_open':True}"
 
         ~record model='ir.ui.view' #hr_workers_comp_claim_tree
             @name: hr.workers_comp.claim.tree
@@ -57,7 +64,7 @@
                 ~tree $Worker_Compensation_Claims default_order='employee_id'
                     @employee_id invisible="context.get('hide_employee' ,True)"
                     @injury_date
-                    @restriction_state
+                    @restriction_state_id
                     @state
                     @location_id
 
@@ -68,16 +75,16 @@
                 ~search $Workers_Compensation_Claims
                     @employee_id
                     @injury_ids
-                    @restriction_state
+                    @restriction_state_id
                     ~separator
                     ~filter $Open_Claims @type_open domain="[('state','=','open')]"
                     ~filter $Closed_Claims @type_closed domain="[('state','=','closed')]"
                     ~separator
-                    ~filter $Full_Restriction @type_restricted domain="[('restriction_state','=','none')]"
-                    ~filter $Light_Duty @type_light domain="[('restriction_state','=','light')]"
-                    ~filter $No_Duty @type_full domain="[('restriction_state','=','full')]"
+                    ~filter $Full_Restriction @type_restricted domain="[('restriction_state_id','=','none')]"
+                    ~filter $Light_Duty @type_light domain="[('restriction_state_id','=','light')]"
+                    ~filter $No_Duty @type_full domain="[('restriction_state_id','=','full')]"
                     ~group expand='0' string='Group by...'
-                        ~filter @restriction_state $Duty_Level context="{'group_by':'restriction_state'}"
+                        ~filter @restriction_state_id $Duty_Level context="{'group_by':'restriction_state_id'}"
                         ~filter @location_id $Location context="{'group_by':'location_id'}"
                         ~filter @injury_date $Injury_Date context="{'group_by':'injury_date'}"
                     
@@ -126,15 +133,13 @@
                     ~group
                         ~group
                             @name
-                            @restriction
 
         ~record model='ir.ui.view' #hr_workers_comp_duty_type_tree
             @name: hr.workers_comp.duty_type.tree
             @model: hr.workers_comp.duty_type
             @arch type='xml'
-                ~tree $Duty_Level default_order='name'
+                ~tree $Duty_Level
                     @name
-                    @restriction
 
         ~record model='ir.actions.act_window' #hr_workers_comp_duty_type_action
             @name: Duty Types
