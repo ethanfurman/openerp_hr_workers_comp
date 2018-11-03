@@ -82,11 +82,51 @@ class hr_workers_comp_claim(osv.Model):
             help='Restricted days + days away from work',
             oldname='full_duty_lost',
             ),
+        'total_days_300': fields.function(
+            _total_days,
+            fnct_inv=True,
+            type='integer',
+            string='Total days 300',
+            multi='dates',
+            store={
+                'hr.workers_comp.claim': (
+                    lambda table, cr, uid, ids, ctx=None: ids,
+                    ['notes_ids'],
+                    10,
+                    ),
+                'hr.workers_comp.history': (
+                    _get_claim_ids,
+                    ['evaluation_date', 'duty_id'],
+                    15,
+                    ),
+                },
+            help='Restricted days + days away from work',
+            ),
         'restricted_duty_total': fields.function(
             _total_days,
             fnct_inv=True,
             type='integer',
             string='Restricted duties/job transfer days',
+            multi='dates',
+            store={
+                'hr.workers_comp.claim': (
+                    lambda table, cr, uid, ids, ctx=None: ids,
+                    ['notes_ids'],
+                    10,
+                    ),
+                'hr.workers_comp.history': (
+                    _get_claim_ids,
+                    ['evaluation_date', 'duty_id'],
+                    15,
+                    ),
+                },
+            help='Number of days of restricted duties.',
+            ),
+        'restricted_duty_total_300': fields.function(
+            _total_days,
+            fnct_inv=True,
+            type='integer',
+            string='Restricted duties/job transfer days 300',
             multi='dates',
             store={
                 'hr.workers_comp.claim': (
@@ -122,6 +162,45 @@ class hr_workers_comp_claim(osv.Model):
                 },
             help='Number of days of no work',
             ),
+        'no_duty_total_300': fields.function(
+            _total_days,
+            fnct_inv=True,
+            type='integer',
+            string='Days away from work 300',
+            multi='dates',
+            store={
+                'hr.workers_comp.claim': (
+                    lambda table, cr, uid, ids, ctx=None: ids,
+                    ['notes_ids'],
+                    10,
+                    ),
+                'hr.workers_comp.history': (
+                    _get_claim_ids,
+                    ['evaluation_date', 'duty_id'],
+                    15,
+                    ),
+                },
+            help='Number of days of no work',
+            ),
+        'days_by_year': fields.function(
+            _total_days,
+            fnct_inv=True,
+            type='html',
+            string='Summary',
+            multi='dates',
+            store={
+                'hr.workers_comp.claim': (
+                    lambda table, cr, uid, ids, ctx=None: ids,
+                    ['notes_ids'],
+                    10,
+                    ),
+                'hr.workers_comp.history': (
+                    _get_claim_ids,
+                    ['evaluation_date', 'duty_id'],
+                    15,
+                    ),
+                },
+            ),
         }
 
     _defaults = {
@@ -138,22 +217,32 @@ class hr_workers_comp_claim(osv.Model):
         res = {}
         res['value'] = value = {}
         today = date(fields.date.context_today(self, cr, uid, context=context))
+        injury_date = date(injury)
+        print('injury date:', injury_date)
+        years = {}
+        estimate_year = None
         today_added = False
         restricted = DayCounter()
+        restricted_300 = DayCounter()
         no_duty = DayCounter()
-        if not notes_ids:
-            value.update({
-                        'total_days': 0,
-                        'restricted_duty_total': 0,
-                        'no_duty_total': 0,
-                        'restriction_state': 'none',
-                        })
-            return res
+        no_duty_300 = DayCounter()
         ir_model_data = self.pool.get('ir.model.data')
         no_duty_restriction = 'none'
         incomplete = ir_model_data.get_object(cr, uid, 'hr_workers_comp', 'incomplete')
         note_history = self.pool.get('hr.workers_comp.history')
         duty_type = self.pool.get('hr.workers_comp.duty_type')
+        value.update({
+                    'total_days': 0,
+                    'restricted_duty_total': 0,
+                    'no_duty_total': 0,
+                    'total_days_300': 0,
+                    'restricted_duty_total_300': 0,
+                    'no_duty_total_300': 0,
+                    'restriction_state_id': incomplete.id,
+                    'days_by_year': ''
+                    })
+        if not notes_ids:
+            return res
         duty_restrictions = dict([
             (r['id'], Restriction(r['id'], r['name'], r['restriction']))
             for r in duty_type.read(cr, uid, context=context)
@@ -165,15 +254,15 @@ class hr_workers_comp_claim(osv.Model):
                 if note[0] == 0:
                     # create
                     # [0, False, {'note': False, 'evaluation_date': '2017-02-02', 'duty_id': 22, 'restriction': 'est'}]
-                    duty_id = note[2].get('duty_id')
-                    if not duty_id:
-                        continue
                     try:
+                        restriction = note[2]['restriction']
+                        if restriction in ('na', False):
+                            continue
+                        duty_id = note[2].get('duty_id')
                         duty = duty_restrictions[duty_id]
                         eval_date = date(note[2]['evaluation_date'])
-                        restriction = note[2].get('restriction') or duty.restriction or False
-                        if not restriction in ('est', 'na'):
-                            notes.append((restriction, eval_date, duty))
+                        # if restriction != 'est':
+                        notes.append(Note(restriction, eval_date, duty))
                     except Exception:
                         _logger.exception('bad note: %r', note)
                         raise
@@ -188,7 +277,7 @@ class hr_workers_comp_claim(osv.Model):
                     if not restriction:
                         # old style: restriction is in duty_id -- abort calculations
                         return {}
-                    elif restriction in ('na', 'est', False):
+                    elif restriction in ('na', False):
                         continue
                     duty_id = note_update.get('duty_id')
                     if duty_id is None:
@@ -201,7 +290,7 @@ class hr_workers_comp_claim(osv.Model):
                     if eval_date is False:
                         # no recorded restriction and/or date, nothing we can calculate with this record
                         continue
-                    notes.append((restriction, eval_date, duty))
+                    notes.append(Note(restriction, eval_date, duty_id))
                 elif note[0] in (2, 3, 5):
                     # various flavors of unlink
                     pass
@@ -210,53 +299,137 @@ class hr_workers_comp_claim(osv.Model):
                     # [[4, 10, False]]
                     note = note_history.browse(cr, uid, note[1], context=context)
                     restriction = note.restriction
-                    if restriction in ('na', 'est', False):
+                    if restriction in ('na', False):
                         continue
                     eval_date = date(note.evaluation_date)
-                    notes.append((note.restriction, date(note.evaluation_date)), note.duty_id)
+                    notes.append(Note(note.restriction, eval_date, note.duty_id))
         else:
             # from function field
             # [note1, note2, note3, ...]
             notes = [
-                    (note.restriction, date(note.evaluation_date), note.duty_id)
+                    Note(note.restriction, date(note.evaluation_date), note.duty_id)
                     for note in notes_ids
-                    if note.restriction not in ('na', 'est', False)
+                    if note.restriction not in ('na', False)
                     ]
+        if not notes:
+            return res
         last_duty = incomplete
-        if notes:
-            last_restriction = notes[0][0]
-            last_date = notes[0][1]
-            last_duty = notes[0][2]
-            if notes[-1][1] < today:
-                notes.append((no_duty_restriction, today, None))
-                today_added = True
-        for restriction, eval_date, duty in notes[1:]:
-            last_duty = duty
+        # sort the notes so the estimate, if any, is immediately after the year it is for
+        # (so a 2018 estimate should be after the last 2017 entry)
+        print('\nNotes before sort:')
+        for _n in notes:
+            print(_n)
+        notes.sort(key=lambda n: (n.date.year, (1, 0)[n.restriction=='est'], n.date))
+        print('\nNotes after sort:')
+        for _n in notes:
+            print(_n)
+        # check if last entry is earlier than today, or later and an estimate
+        if (notes[-1].date < today and notes[-1].restriction != 'none') or notes[-1].restriction == 'est':
+            notes.append(Note(no_duty_restriction, today, None))
+            today_added = True
+        print('\nNotes with today added (maybe):')
+        for _n in notes:
+            print(_n)
+        # now add entries at year beginnings to help with yearly calculations
+        # [('full', 2017-10-15, 'restriction'), ('none', 2018-03-15, 'cleared')]
+        # becomes
+        # [('full', 2017-10-15, 'restriction'), ('full', 2018-01-01, 'restriction'), ('none', 2018-03-15, 'cleared')]
+        old_notes = notes
+        notes = []
+        last_restriction, last_date, last_duty = old_notes[0]
+        notes.append(old_notes[0])
+        for note in old_notes[1:]:
+            if last_date.year < note.date.year:
+                # switched years, add final year entry
+                notes.append(Note(last_restriction, date(last_date.year, 12, 31), last_duty))
+            notes.append(note)
+            last_restriction, last_date, last_duty = note
+        print('\nNotes after year breaks added (maybe):')
+        for _n in notes:
+            print(_n)
+        # prep for scans, and check if estimate needed
+        print('\nyears ->', years)
+        print('\nprocessing notes...\n%r' % (notes[0], ))
+        last_restriction, last_date, last_duty = notes[0]
+        years[last_date.year] = YearCounter(last_date.year)
+        for note in notes[1:]:
+            print('\nyears ->', years)
+            print(note)
+            if note.date.year not in years:
+                estimate_year = '%s estimate' % note.date.year
+                years[estimate_year] = estimate_year = YearCounter(note.date.year, estimate=True)
+            last_duty = note.duty_id
             # calculate number of days in last state
             if last_restriction == 'none':
+                print('  skipping non-restriction')
                 # unless those were no-restriction days
-                last_restriction = restriction
-                last_date = eval_date
+                last_restriction = note.restriction
+                last_date = note.date
                 continue
-            if last_restriction == restriction:
-                continue
-            days = eval_date - last_date - ONE_DAY
-            if last_restriction in ('light', 'full') and restriction in ('light', 'full'):
+            days = note.date - last_date - ONE_DAY
+            print('  days in last period: %r' % days)
+            if last_restriction in ('light', 'full') and note.restriction in ('light', 'full'):
+                print('  adding one more since prior period was also light|full')
                 days += ONE_DAY
-            if last_restriction == 'full':
+            target_year = years.setdefault(note.date.year, YearCounter(note.date.year))
+            print('  target year: %r' % target_year)
+            if note.restriction == 'est':
+                print('  adding to estimate year')
+                if estimate_year.year != note.date.year:
+                    # show an error by leaving values empty
+                    continue
+                if last_restriction == 'full':
+                    estimate_year.full += days
+                    no_duty_300 += days
+                    print('added %s to no_duty_300' % days)
+                elif last_restriction == 'light':
+                    estimate_year.partial += days
+                    restricted_300 += days
+                    print('added %s to restricted_300' % days)
+                continue
+            elif last_restriction == 'full':
+                target_year.full += days
                 no_duty += days
+                if note.date.year == injury_date.year:
+                    no_duty_300 += days
+                    print('added %s to no_duty_300' % days)
             elif last_restriction == 'light':
+                target_year.partial += days
                 restricted += days
+                if note.date.year == injury_date.year:
+                    restricted_300 += days
+                    print('added %s to restricted_300' % days)
             else:
                 raise ERPError('Bug!', 'unknown restriction state: %r' % last_restriction)
-            last_restriction = restriction
-            last_date = eval_date
+            last_restriction = note.restriction
+            last_date = note.date
         if today_added:
-            last_duty = notes[-2][2]
+            last_duty = notes[-2].duty_id
         value['restriction_state_id'] = last_duty.id
         value['total_days'] = int(restricted + no_duty)
+        value['total_days_300'] = int(restricted_300 + no_duty_300)
         value['restricted_duty_total'] = int(restricted)
+        value['restricted_duty_total_300'] = int(restricted_300)
         value['no_duty_total'] = int(no_duty)
+        value['no_duty_total_300'] = int(no_duty_300)
+        year_html = (
+                '<table style="width: 500px; margin-top: 0px; margin-bottom: 0px"><tbody>\n<tr style="height: 22px">'
+                '<th style="padding: 0px 10px 10px; text-align: left; min-width: 100px; max-width: 100px">Year</th>'
+                '<th style="padding: 0px 10px 10px; text-align: right; min-width: 150px; max-width: 150px">Days away from work</th>'
+                '<th style="padding: 0px 10px 10px; text-align: right; min-width: 200px; max-width: 200px">Days restricted / Job transfer</th>'
+                '<th style="padding: 0px 10px 10px; text-align: right; min-width: 50px; max-width: 50px">Total</th></tr>\n'
+                )
+        year_total = YearCounter('Total')
+        # add yearly info
+        for year in sorted(years.values(), key=lambda y: ((1, 0)[y.estimate], y.year)):
+            year_html += year.html_row()
+            if not year.estimate:
+                year_total.full += year.full
+                year_total.partial += year.partial
+        # add totals
+        year_html += year_total.html_row(top_margin=True)
+        year_html += '</tbody></table>'
+        value['days_by_year'] = year_html
         return res
 
     def recalc_days(self, cr, uid, *args):
@@ -353,7 +526,8 @@ class hr_workers_comp_history(osv.Model):
         full_restriction = [r['res_id'] for r in records if r['name'] == 'full_restriction']
         light_restriction = [r['res_id'] for r in records if r['name'].startswith('restriction')]
         no_restriction = [r['res_id'] for r in records if r['name'] not in ('incomplete', 'full_restriction')]
-        estimate = [r['res_id'] for r in records if r['name'] == 'employee_cleared_to_work']
+        estimate = no_restriction + light_restriction
+        # estimate = [r['res_id'] for r in records if r['name'] == 'employee_cleared_to_work']
         #
         res = {}
         domain = res['domain'] = {}
@@ -412,6 +586,54 @@ class DayCounter(object):
 
     def __init__(self, value=0):
         self.value = value
+
+    def __eq__(self, other):
+        if not isinstance(other, (self.__class__, int, long)):
+            return NotImplemented
+        if isinstance(other, self.__class__):
+            return self.value == other.value
+        else:
+            return self.value == other
+
+    def __ne__(self, other):
+        if not isinstance(other, (self.__class__, int, long)):
+            return NotImplemented
+        if isinstance(other, self.__class__):
+            return self.value != other.value
+        else:
+            return self.value != other
+
+    def __ge__(self, other):
+        if not isinstance(other, (self.__class__, int, long)):
+            return NotImplemented
+        if isinstance(other, self.__class__):
+            return self.value >= other.value
+        else:
+            return self.value >= other
+
+    def __gt__(self, other):
+        if not isinstance(other, (self.__class__, int, long)):
+            return NotImplemented
+        if isinstance(other, self.__class__):
+            return self.value > other.value
+        else:
+            return self.value > other
+
+    def __lt__(self, other):
+        if not isinstance(other, (self.__class__, int, long)):
+            return NotImplemented
+        if isinstance(other, self.__class__):
+            return self.value < other.value
+        else:
+            return self.value < other
+
+    def __le__(self, other):
+        if not isinstance(other, (self.__class__, int, long)):
+            return NotImplemented
+        if isinstance(other, self.__class__):
+            return self.value <= other.value
+        else:
+            return self.value <= other
 
     def __add__(self, other):
         if isinstance(other, self.__class__):
@@ -513,6 +735,78 @@ class DayCounter(object):
 
     def __repr__(self):
         return 'DayCounter(%r)' % self.value
+
+    def __str__(self):
+        return str(self.value)
+
+
+class YearCounter(object):
+
+    def __init__(self, year, full=None, partial=None, estimate=False):
+        if full is None:
+            full = DayCounter()
+        if partial is None:
+            partial = DayCounter()
+        self.year = year
+        self.full = full
+        self.partial = partial
+        self.estimate = estimate
+
+    def __repr__(self):
+        return (
+                'YearCounter(%s, full=%s, partial=%s, estimate=%s)'
+                % (self.year, self.full, self.partial, self.estimate)
+                )
+
+    def __nonzero__(self):
+        return (self.estimate is False) or (self.full+self.partial > 0)
+    __bool__ = __nonzero__
+
+    def html_row(self, top_margin=False):
+        if self and self.estimate:
+            return (
+                '<tr style="height: 22px">'
+                '<th style="padding: 8px 10px 2px">%s estimate</th>'
+                '<td style="padding: 8px 10px 2px; text-align: right">%s</td>'
+                '<td style="padding: 8px 10px 2px; text-align: right">%s</td>'
+                '<td style="padding: 8px 10px 2px; text-align: right; border-left: 1px solid #dddddd">%s</td>'
+                '</tr>\n'
+                % (self.year, self.full, self.partial, self.full+self.partial)
+                )
+        elif self and top_margin:
+            return (
+                '<tr style="height: 22px">'
+                '<th style="padding: 8px 10px 2px">%s</th>'
+                '<td style="padding: 8px 10px 2px; text-align: right; border-top: 1px solid #dddddd">%s</td>'
+                '<td style="padding: 8px 10px 2px; text-align: right; border-top: 1px solid #dddddd">%s</td>'
+                '<td style="padding: 8px 10px 2px; text-align: right; border-top: 1px solid #dddddd; border-left: 1px solid #dddddd">%s</td>'
+                '</tr>\n'
+                % (self.year, self.full, self.partial, self.full+self.partial)
+                )
+        elif self:
+            return (
+                '<tr style="height: 22px">'
+                '<th style="padding: 8px 10px 2px">%s</th>'
+                '<td style="padding: 8px 10px 2px; text-align: right">%s</td>'
+                '<td style="padding: 8px 10px 2px; text-align: right">%s</td>'
+                '<td style="padding: 8px 10px 2px; text-align: right; border-left: 1px solid #dddddd">%s</td>'
+                '</tr>\n'
+                % (self.year, self.full, self.partial, self.full+self.partial)
+                )
+        else:
+            return ('<tr style="height: 22px">'
+            '<th style="padding: 8px 10px 2px">%s estimate</th>'
+            '<td style="padding: 8px 10px 2px; text-align: center" colspan="2">M I S S I N G</td>'
+            '<td style="border-left: 1px solid #dddddd"></td>'
+            '</tr>'
+            % self.year
+            )
+
+
+class Note(NamedTuple):
+    restriction = 0
+    date = 1
+    duty_id = 2
 
 
 class Restriction(NamedTuple):

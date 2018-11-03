@@ -2,7 +2,7 @@
 
 {
     'name' : 'Workers Compensation Management',
-    'version' : '0.1',
+    'version' : '0.3',
     'author' : 'Ethan Furman',
     'sequence': 116,
     'category': 'Human Resources',
@@ -21,8 +21,7 @@ This application allows you to track injuries by department, type, and time lost
         'hr_workers_comp_data.xaml',
         'hr_workers_comp_view.xaml',
         'security/ir.model.access.csv',
-        ],
-
+	],
     'installable' : True,
     'auto_install': False,
     'application': True,

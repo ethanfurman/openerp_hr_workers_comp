@@ -21,6 +21,34 @@
                             @attorney $Attorney_Retained
                             @reserved_amount widget='monetary'
                             @paid_amount widget='monetary'
+                            ~hr colspan='2'
+                            ~table colspan='2'
+                                ~tr style="height: 22px"
+                                    ~th style="width: 149px"
+                                    ~th style="width: 15px"
+                                    ~th style="width: 100px; margin-left: 20px; text-align: right; border-bottom: 1px solid #dddddd": Actual
+                                    ~th style="width: 100px; margin-left: 20px; text-align: right; border-bottom: 1px solid #dddddd": 300 log
+                                ~tr style="height: 22px"
+                                    ~th style="border-right: 1px solid #dddddd;": Days Away
+                                    ~td
+                                    ~td style="text-align: right; margin-left: 20px"
+                                        @no_duty_total readonly='1' nolabel='1'
+                                    ~td style="text-align: right; margin-left: 20px"
+                                        @no_duty_total_300 readonly='1' nolabel='1'
+                                ~tr style="height: 22px"
+                                    ~th style="border-right: 1px solid #dddddd;": Restricted/Transfer
+                                    ~td
+                                    ~td style="text-align: right; margin-left: 20px"
+                                        @restricted_duty_total readonly='1' nolabel='1'
+                                    ~td style="text-align: right; margin-left: 20px"
+                                        @restricted_duty_total_300 readonly='1' nolabel='1'
+                                ~tr style="height: 22px"
+                                    ~th style="border-right: 1px solid #dddddd": Total
+                                    ~td
+                                    ~td style="text-align: right; margin-left: 20px; border-top: 1px solid #dddddd"
+                                        @total_days readonly='1' nolabel='1'
+                                    ~td style="text-align: right; margin-left: 20px; border-top: 1px solid #dddddd"
+                                        @total_days_300 readonly='1' nolabel='1'
                         ~group
                             @injury_date on_change='onchange_dates(injury_date, notes_ids, state)'
                             @notification_date
@@ -28,9 +56,14 @@
                             @injury_ids colspan='2' options="{'create':False, 'create_edit':False, 'limit':15, 'no_open':True}" nolabel='1'
                                 ~tree default_order='name'
                                     @name $Injuries
-                            @no_duty_total readonly='1'
-                            @restricted_duty_total readonly='1'
-                            @total_days $Total_days readonly='1'
+                    ~hr colspan='4'
+                    ~table colspan='4'
+                        ~tr style="height: min-height: 22px"
+                            ~th style="width: 149px; border-right: 1px solid #dddddd"
+                                ~label for='days_by_year'
+                            ~td
+                                @days_by_year widget='html' readonly='1' options="{'no_embed': True}" nolabel='1'
+                    ~hr colspan='4'
                     ~group
                         ~separator $History colspan='4'
                         @notes_ids nolabel='1' context="{'default_claim_id': active_id}" colspan='4' on_change='onchange_dates(injury_date, notes_ids, state)'
