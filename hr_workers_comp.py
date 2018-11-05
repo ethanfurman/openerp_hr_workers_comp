@@ -214,23 +214,9 @@ class hr_workers_comp_claim(osv.Model):
 
     def onchange_dates(self, cr, uid, ids, injury, notes_ids, claim_state, context=None):
         # also called by nightly update routine
+        incomplete = self.pool.get('ir.model.data').get_object(cr, uid, 'hr_workers_comp', 'incomplete')
         res = {}
         res['value'] = value = {}
-        today = date(fields.date.context_today(self, cr, uid, context=context))
-        injury_date = date(injury)
-        print('injury date:', injury_date)
-        years = {}
-        estimate_year = None
-        today_added = False
-        restricted = DayCounter()
-        restricted_300 = DayCounter()
-        no_duty = DayCounter()
-        no_duty_300 = DayCounter()
-        ir_model_data = self.pool.get('ir.model.data')
-        no_duty_restriction = 'none'
-        incomplete = ir_model_data.get_object(cr, uid, 'hr_workers_comp', 'incomplete')
-        note_history = self.pool.get('hr.workers_comp.history')
-        duty_type = self.pool.get('hr.workers_comp.duty_type')
         value.update({
                     'total_days': 0,
                     'restricted_duty_total': 0,
@@ -243,168 +229,190 @@ class hr_workers_comp_claim(osv.Model):
                     })
         if not notes_ids:
             return res
+        # helper functions
+        def _sort_notes(notes_ids, estimate=False):
+            def _keep_record(restriction, eval_date):
+                if restriction in ('na', False):
+                    return False
+                if estimate and restriction == 'est':
+                    return True
+                elif estimate and eval_date.year == injury_date.year:
+                    return True
+                elif not estimate and restriction != 'est':
+                    return True
+                else:
+                    return False
+            notes = []
+            if isinstance(notes_ids[0], list):
+                # from web form
+                for note in notes_ids:
+                    if note[0] == 0:
+                        # create
+                        # [0, False, {'note': False, 'evaluation_date': '2017-02-02', 'duty_id': 22, 'restriction': 'est'}]
+                        try:
+                            restriction = note[2]['restriction']
+                            if restriction in ('na', False):
+                                continue
+                            duty_id = note[2].get('duty_id')
+                            duty = duty_restrictions[duty_id]
+                            eval_date = date(note[2]['evaluation_date'])
+                            if _keep_record(restriction, eval_date):
+                                notes.append(Note(restriction, eval_date, duty))
+                        except Exception:
+                            _logger.exception('bad note: %r', note)
+                            raise
+                    elif note[0] == 1:
+                        # update (so read old record and apply updates)
+                        # [1, 15, {'evaluation_date': '2017-01-17', 'duty_id': 13, 'restriction': 'full'}]
+                        #
+                        # new style note or old style?
+                        note_update = note[2]
+                        note = note_history.browse(cr, uid, note[1], context=context)
+                        restriction = note_update.get('restriction') or note.restriction
+                        if not restriction:
+                            # old style: restriction is in duty_id -- abort calculations
+                            raise OldStyleRestriction(note)
+                        elif restriction in ('na', False):
+                            continue
+                        duty_id = note_update.get('duty_id')
+                        if duty_id is None:
+                            duty_id = note.duty_id
+                        else:
+                            duty_id = duty_restrictions[duty_id]
+                        eval_date = date(note_update.get('evaluation_date'))
+                        if not eval_date:
+                            eval_date = date(note.evaluation_date)
+                        if eval_date is False:
+                            # no recorded restriction and/or date, nothing we can calculate with this record
+                            # note: this shouldn't happen
+                            raise InvalidNote(note)
+                        if _keep_record(restriction, eval_date):
+                            notes.append(Note(restriction, eval_date, duty_id))
+                    elif note[0] in (2, 3, 5):
+                        # various flavors of unlink
+                        pass
+                    elif note[0] == 4:
+                        # link
+                        # [[4, 10, False]]
+                        note = note_history.browse(cr, uid, note[1], context=context)
+                        restriction = note.restriction
+                        if restriction in ('na', False):
+                            continue
+                        eval_date = date(note.evaluation_date)
+                        if _keep_record(restriction, eval_date):
+                            notes.append(Note(note.restriction, eval_date, note.duty_id))
+            else:
+                # from function field
+                # [note1, note2, note3, ...]
+                notes = []
+                for note in notes_ids:
+                    restriction = note.restriction
+                    eval_date = date(note.evaluation_date)
+                    if _keep_record(restriction, eval_date):
+                        notes.append(Note(restriction, eval_date, note.duty_id))
+            notes.sort(key=lambda n: n.date)
+            return notes
+        #
+        def _calc_notes(notes, estimate=False):
+            print('calculating %s notes' % (('normal', 'estimate')[estimate],))
+            years = {}
+            restricted = DayCounter()
+            no_duty = DayCounter()
+            last_note = notes[-1]
+            today_added = False
+            # check if last entry is earlier than today
+            if last_note.date < today:
+                if estimate and today.year != injury_date.year:
+                    estimate_year = injury_date.replace(month=1, day=1, delta_year=1).year
+                    years['%s estimate' % estimate_year] = YearCounter(estimate_year, estimate=True)
+                elif last_note.restriction != 'none':
+                    notes.append(Note(no_duty_restriction, today, None))
+                    today_added = True
+            # now add entries at year endings to help with yearly calculations
+            # [('full', 2017-10-15, 'restriction'), ('none', 2018-03-15, 'cleared')]
+            # becomes
+            # [('full', 2017-10-15, 'restriction'), ('full', 2017-12-31, 'restriction'), ('none', 2018-03-15, 'cleared')]
+            old_notes = notes
+            notes = []
+            last_restriction, last_date, last_duty = old_notes[0]
+            notes.append(old_notes[0])
+            for note in old_notes[1:]:
+                if last_date.year < note.date.year:
+                    # switched years, add final year entry
+                    notes.append(Note(last_restriction, date(last_date.year, 12, 31), last_duty))
+                notes.append(note)
+                last_restriction, last_date, last_duty = note
+            # prep for scans, and check if estimate needed
+            last_restriction, last_date, last_duty = notes[0]
+            years[str(last_date.year)] = YearCounter(last_date.year)
+            for note in notes[1:]:
+                print('note:', note)
+                last_duty = note.duty_id
+                # calculate number of days in last state
+                if last_restriction == 'none':
+                    # unless those were no-restriction days
+                    last_restriction = note.restriction
+                    last_date = note.date
+                    continue
+                days = note.date - last_date - ONE_DAY
+                if last_restriction in ('light', 'full') and note.restriction in ('light', 'full'):
+                    days += ONE_DAY
+                # if processing an estimate batch, only one additional year will be present, so
+                # set it up as an estimate year
+                target_year = years.setdefault(
+                        str(note.date.year) + ('', ' estimate')[estimate and note.date.year != injury_date.year],
+                        YearCounter(note.date.year, estimate=estimate),
+                        )
+                if last_restriction == 'full':
+                    target_year.full += days
+                    no_duty += days
+                elif last_restriction == 'light':
+                    target_year.partial += days
+                    restricted += days
+                else:
+                    raise ERPError('Bug!', 'unknown restriction state: %r' % last_restriction)
+                print('duty_id:', note.duty_id)
+                if note.restriction != 'est':
+                    last_restriction = note.restriction
+                else:
+                    print('\nnote.restriction:', note.restriction)
+                    print('note.duty_id:', note.duty_id.id, note.duty_id.name, '\n')
+                    if note.duty_id.id == est_light_duty.id:
+                        last_restriction = 'light'
+                    elif note.duty_id.id == est_cleared.id:
+                        last_restriction = 'none'
+                    else:
+                        raise Exception('bad duty_id: %s' % (note.duty_id, ))
+                last_date = note.date
+            if today_added:
+                last_duty = notes[-2].duty_id
+            print('\nyears:', years, '\nno duty:', no_duty, '\nrestricted:', restricted, '\n')
+            return years, restricted, no_duty, last_duty
+        #
+        # main function
+        #
+        # establish values
+        injury_date = date(injury)
+        today = date(fields.date.context_today(self, cr, uid, context=context))
+        no_duty_restriction = 'none'
+        ir_model_data = self.pool.get('ir.model.data')
+        est_cleared = ir_model_data.get_object(cr, uid, 'hr_workers_comp', 'est_cleared')
+        est_light_duty = ir_model_data.get_object(cr, uid, 'hr_workers_comp', 'est_light_duty')
+        note_history = self.pool.get('hr.workers_comp.history')
+        duty_type = self.pool.get('hr.workers_comp.duty_type')
         duty_restrictions = dict([
             (r['id'], Restriction(r['id'], r['name'], r['restriction']))
             for r in duty_type.read(cr, uid, context=context)
             ])
-        notes = []
-        if isinstance(notes_ids[0], list):
-            # from web form
-            for note in notes_ids:
-                if note[0] == 0:
-                    # create
-                    # [0, False, {'note': False, 'evaluation_date': '2017-02-02', 'duty_id': 22, 'restriction': 'est'}]
-                    try:
-                        restriction = note[2]['restriction']
-                        if restriction in ('na', False):
-                            continue
-                        duty_id = note[2].get('duty_id')
-                        duty = duty_restrictions[duty_id]
-                        eval_date = date(note[2]['evaluation_date'])
-                        # if restriction != 'est':
-                        notes.append(Note(restriction, eval_date, duty))
-                    except Exception:
-                        _logger.exception('bad note: %r', note)
-                        raise
-                elif note[0] == 1:
-                    # update (so read old record and apply updates)
-                    # [1, 15, {'evaluation_date': '2017-01-17', 'duty_id': 13, 'restriction': 'full'}]
-                    #
-                    # new style note or old style?
-                    note_update = note[2]
-                    note = note_history.browse(cr, uid, note[1], context=context)
-                    restriction = note_update.get('restriction') or note.restriction
-                    if not restriction:
-                        # old style: restriction is in duty_id -- abort calculations
-                        return {}
-                    elif restriction in ('na', False):
-                        continue
-                    duty_id = note_update.get('duty_id')
-                    if duty_id is None:
-                        duty_id = note.duty_id
-                    else:
-                        duty_id = duty_restrictions[duty_id]
-                    eval_date = date(note_update.get('evaluation_date'))
-                    if not eval_date:
-                        eval_date = date(note.evaluation_date)
-                    if eval_date is False:
-                        # no recorded restriction and/or date, nothing we can calculate with this record
-                        continue
-                    notes.append(Note(restriction, eval_date, duty_id))
-                elif note[0] in (2, 3, 5):
-                    # various flavors of unlink
-                    pass
-                elif note[0] == 4:
-                    # link
-                    # [[4, 10, False]]
-                    note = note_history.browse(cr, uid, note[1], context=context)
-                    restriction = note.restriction
-                    if restriction in ('na', False):
-                        continue
-                    eval_date = date(note.evaluation_date)
-                    notes.append(Note(note.restriction, eval_date, note.duty_id))
-        else:
-            # from function field
-            # [note1, note2, note3, ...]
-            notes = [
-                    Note(note.restriction, date(note.evaluation_date), note.duty_id)
-                    for note in notes_ids
-                    if note.restriction not in ('na', False)
-                    ]
-        if not notes:
+        # get actual and estimated notes
+        actual_notes = _sort_notes(notes_ids)
+        estimated_notes = _sort_notes(notes_ids, estimate=True)
+        if not (actual_notes or estimated_notes):
             return res
-        last_duty = incomplete
-        # sort the notes so the estimate, if any, is immediately after the year it is for
-        # (so a 2018 estimate should be after the last 2017 entry)
-        print('\nNotes before sort:')
-        for _n in notes:
-            print(_n)
-        notes.sort(key=lambda n: (n.date.year, (1, 0)[n.restriction=='est'], n.date))
-        print('\nNotes after sort:')
-        for _n in notes:
-            print(_n)
-        # check if last entry is earlier than today, or later and an estimate
-        if (notes[-1].date < today and notes[-1].restriction != 'none') or notes[-1].restriction == 'est':
-            notes.append(Note(no_duty_restriction, today, None))
-            today_added = True
-        print('\nNotes with today added (maybe):')
-        for _n in notes:
-            print(_n)
-        # now add entries at year beginnings to help with yearly calculations
-        # [('full', 2017-10-15, 'restriction'), ('none', 2018-03-15, 'cleared')]
-        # becomes
-        # [('full', 2017-10-15, 'restriction'), ('full', 2018-01-01, 'restriction'), ('none', 2018-03-15, 'cleared')]
-        old_notes = notes
-        notes = []
-        last_restriction, last_date, last_duty = old_notes[0]
-        notes.append(old_notes[0])
-        for note in old_notes[1:]:
-            if last_date.year < note.date.year:
-                # switched years, add final year entry
-                notes.append(Note(last_restriction, date(last_date.year, 12, 31), last_duty))
-            notes.append(note)
-            last_restriction, last_date, last_duty = note
-        print('\nNotes after year breaks added (maybe):')
-        for _n in notes:
-            print(_n)
-        # prep for scans, and check if estimate needed
-        print('\nyears ->', years)
-        print('\nprocessing notes...\n%r' % (notes[0], ))
-        last_restriction, last_date, last_duty = notes[0]
-        years[last_date.year] = YearCounter(last_date.year)
-        for note in notes[1:]:
-            print('\nyears ->', years)
-            print(note)
-            if note.date.year not in years:
-                estimate_year = '%s estimate' % note.date.year
-                years[estimate_year] = estimate_year = YearCounter(note.date.year, estimate=True)
-            last_duty = note.duty_id
-            # calculate number of days in last state
-            if last_restriction == 'none':
-                print('  skipping non-restriction')
-                # unless those were no-restriction days
-                last_restriction = note.restriction
-                last_date = note.date
-                continue
-            days = note.date - last_date - ONE_DAY
-            print('  days in last period: %r' % days)
-            if last_restriction in ('light', 'full') and note.restriction in ('light', 'full'):
-                print('  adding one more since prior period was also light|full')
-                days += ONE_DAY
-            target_year = years.setdefault(note.date.year, YearCounter(note.date.year))
-            print('  target year: %r' % target_year)
-            if note.restriction == 'est':
-                print('  adding to estimate year')
-                if estimate_year.year != note.date.year:
-                    # show an error by leaving values empty
-                    continue
-                if last_restriction == 'full':
-                    estimate_year.full += days
-                    no_duty_300 += days
-                    print('added %s to no_duty_300' % days)
-                elif last_restriction == 'light':
-                    estimate_year.partial += days
-                    restricted_300 += days
-                    print('added %s to restricted_300' % days)
-                continue
-            elif last_restriction == 'full':
-                target_year.full += days
-                no_duty += days
-                if note.date.year == injury_date.year:
-                    no_duty_300 += days
-                    print('added %s to no_duty_300' % days)
-            elif last_restriction == 'light':
-                target_year.partial += days
-                restricted += days
-                if note.date.year == injury_date.year:
-                    restricted_300 += days
-                    print('added %s to restricted_300' % days)
-            else:
-                raise ERPError('Bug!', 'unknown restriction state: %r' % last_restriction)
-            last_restriction = note.restriction
-            last_date = note.date
-        if today_added:
-            last_duty = notes[-2].duty_id
+        years, restricted_300, no_duty_300, last_duty = _calc_notes(estimated_notes, estimate=True)
+        actual_years, restricted, no_duty, last_duty = _calc_notes(actual_notes)
+        years.update(actual_years)
+
         value['restriction_state_id'] = last_duty.id
         value['total_days'] = int(restricted + no_duty)
         value['total_days_300'] = int(restricted_300 + no_duty_300)
@@ -526,8 +534,7 @@ class hr_workers_comp_history(osv.Model):
         full_restriction = [r['res_id'] for r in records if r['name'] == 'full_restriction']
         light_restriction = [r['res_id'] for r in records if r['name'].startswith('restriction')]
         no_restriction = [r['res_id'] for r in records if r['name'] not in ('incomplete', 'full_restriction')]
-        estimate = no_restriction + light_restriction
-        # estimate = [r['res_id'] for r in records if r['name'] == 'employee_cleared_to_work']
+        estimate = [r['res_id'] for r in records if r['name'] in ('est_cleared', 'est_light_duty')]
         #
         res = {}
         domain = res['domain'] = {}
@@ -545,7 +552,6 @@ class hr_workers_comp_history(osv.Model):
             restriction_ids = no_restriction
         elif restriction == 'est':
             domain['duty_id'] = [('id','in',estimate)]
-            value['duty_id'] = duty_id = estimate[0]
             restriction_ids = estimate
         elif restriction == 'na':
             domain['duty_id'] = [('id','=',0)]
@@ -765,7 +771,7 @@ class YearCounter(object):
     def html_row(self, top_margin=False):
         if self and self.estimate:
             return (
-                '<tr style="height: 22px">'
+                '<tr style="height: 22px" bgcolor="eeeeee">'
                 '<th style="padding: 8px 10px 2px">%s estimate</th>'
                 '<td style="padding: 8px 10px 2px; text-align: right">%s</td>'
                 '<td style="padding: 8px 10px 2px; text-align: right">%s</td>'
@@ -794,7 +800,7 @@ class YearCounter(object):
                 % (self.year, self.full, self.partial, self.full+self.partial)
                 )
         else:
-            return ('<tr style="height: 22px">'
+            return ('<tr style="height: 22px" bgcolor="ffe6ea">'
             '<th style="padding: 8px 10px 2px">%s estimate</th>'
             '<td style="padding: 8px 10px 2px; text-align: center" colspan="2">M I S S I N G</td>'
             '<td style="border-left: 1px solid #dddddd"></td>'
@@ -813,3 +819,10 @@ class Restriction(NamedTuple):
     id = 0
     name = 1
     restriction = 2
+
+
+class OldStyleRestriction(Exception):
+    pass
+
+class InvalidNote(Exception):
+    pass

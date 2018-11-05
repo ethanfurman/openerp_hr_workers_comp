@@ -6,16 +6,12 @@
 ~openerp
     ~data noupdate='0'
 
-        ~record model=duty_type #full_restriction
-            @name: Complete Restriction
-            @active eval='True'
-
         ~record model=duty_type #employee_returned_to_work
             @name: Returned to work
             @active eval='True'
 
-        ~record model=duty_type #employee_cleared_to_work
-            @name: Medically cleared of all restrictions
+        ~record model=duty_type #full_restriction
+            @name: Complete Restriction
             @active eval='True'
 
         ~record model=duty_type #restriction_office_work_only
@@ -74,7 +70,18 @@
             @name: No longer an employee - Settlement Paid
             @active eval='True'
 
+        ~record model=duty_type #employee_cleared_to_work
+            @name: Medically cleared of all restrictions
+            @active eval='True'
+
+        ~record model=duty_type #est_light_duty
+            @name: Light duty restrictions
+            @active eval='True'
+
+        ~record model=duty_type #est_cleared
+            @name: All restrictions cleared
+            @active eval='True'
+
         ~record model=duty_type #incomplete
             @name: INCOMPLETE
             @active eval='True'
-
