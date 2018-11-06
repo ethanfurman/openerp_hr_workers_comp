@@ -531,9 +531,9 @@ class hr_workers_comp_history(osv.Model):
         ir_model_data = self.pool.get('ir.model.data')
         records = ir_model_data.read(cr, uid, [('model','=','hr.workers_comp.duty_type')], fields=['name', 'res_id'], context=context)
         active = [r['res_id'] for r in records]
-        full_restriction = [r['res_id'] for r in records if r['name'] == 'full_restriction']
-        light_restriction = [r['res_id'] for r in records if r['name'].startswith('restriction')]
-        no_restriction = [r['res_id'] for r in records if r['name'] not in ('incomplete', 'full_restriction')]
+        full_restriction = [r['res_id'] for r in records if r['name'] in ('full_restriction', 'employee_returned_to_work')]
+        light_restriction = [r['res_id'] for r in records if (r['name'].startswith('restriction') or r['name'] == 'employee_returned_to_work')]
+        no_restriction = [r['res_id'] for r in records if r['name'] not in ('incomplete', 'full_restriction', 'est_light_duty', 'est_cleared')]
         estimate = [r['res_id'] for r in records if r['name'] in ('est_cleared', 'est_light_duty')]
         #
         res = {}
