@@ -180,7 +180,8 @@
             @view_type: form
             @view_mode: tree,form
 
-        ~menuitem name='Duty Types' #menu_hr_workers_comp_duty_type parent='menu_hr_workers_comp_configuration' action='hr_workers_comp_duty_type_action'
+        // disable duty type menu for now
+        // ~menuitem name='Duty Types' #menu_hr_workers_comp_duty_type parent='menu_hr_workers_comp_configuration' action='hr_workers_comp_duty_type_action'
 
         // employee integration
 
