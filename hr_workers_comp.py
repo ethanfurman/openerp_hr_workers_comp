@@ -542,7 +542,7 @@ class hr_workers_comp_history(osv.Model):
         #
         if restriction == 'full':
             domain['duty_id'] = [('id','in',full_restriction)]
-            value['duty_id'] = duty_id = full_restriction[0]
+            value['duty_id'] = duty_id = full_restriction[-1]
             restriction_ids = full_restriction
         elif restriction == 'light':
             domain['duty_id'] = [('id','in',light_restriction)]
