@@ -12,7 +12,8 @@
                     ~header
                         ~button @button_hr_workers_comp_close $Close .oe_edit_hide type='object' attrs="{'invisible': [('state','=','closed')]}"
                         ~button @button_hr_workers_comp_reopen $Re-Open .oe_edit_hide type='object' attrs="{'invisible': [('state','=','open')]}"
-                        @restriction_state_id widget='statusbar' statusbar_visible='...'
+                        @restriction_type widget='statusbar' statusbar_visible='...' .oe_inline
+                        @restriction_state_id widget='statusbar' statusbar_visible='...' .oe_inline
                     ~group
                         ~group
                             @state invisible='1'

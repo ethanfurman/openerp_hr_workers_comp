@@ -1,4 +1,4 @@
-#imports
+# imports
 from __future__ import print_function
 import logging
 from aenum import NamedTuple
@@ -9,9 +9,20 @@ from osv import osv, fields
 
 _logger = logging.getLogger(__name__)
 
+# constants
 ONE_DAY = timedelta(1)
 
-#tables
+class RestrictionType(fields.SelectionEnum):
+    _order_ = 'full light none est na'
+    full = 'No duties'
+    light = 'Light duties'
+    none = 'Regular Duties'
+    est = 'Estimate'
+    na = 'N/A'
+
+
+# tables
+
 class hr_workers_comp_claim(osv.Model):
     "workers comp information fields"
     _name = 'hr.workers_comp.claim'
@@ -45,7 +56,8 @@ class hr_workers_comp_claim(osv.Model):
             'Status',
             sort_order='definition',
             ),
-        'restriction_state_id': fields.many2one('hr.workers_comp.duty_type', 'Duty'),
+        'restriction_type': fields.selection(RestrictionType, 'Restriction Category'),
+        'restriction_state_id': fields.many2one('hr.workers_comp.duty_type', 'Restriction Text'),
         'employee_id': fields.many2one('hr.employee', 'Employee', ondelete='restrict'),
         'notification_date': fields.date('Notified on', help='Date employee notified us of injury'),
         'injury_ids': fields.many2many(
@@ -224,6 +236,7 @@ class hr_workers_comp_claim(osv.Model):
                     'total_days_300': 0,
                     'restricted_duty_total_300': 0,
                     'no_duty_total_300': 0,
+                    'restriction_type': False,
                     'restriction_state_id': incomplete.id,
                     'days_by_year': ''
                     })
@@ -314,7 +327,6 @@ class hr_workers_comp_claim(osv.Model):
             return notes
         #
         def _calc_notes(notes, estimate=False):
-            print('calculating %s notes' % (('normal', 'estimate')[estimate],))
             years = {}
             restricted = DayCounter()
             no_duty = DayCounter()
@@ -346,7 +358,6 @@ class hr_workers_comp_claim(osv.Model):
             last_restriction, last_date, last_duty = notes[0]
             years[str(last_date.year)] = YearCounter(last_date.year)
             for note in notes[1:]:
-                print('note:', note)
                 last_duty = note.duty_id
                 # calculate number of days in last state
                 if last_restriction == 'none':
@@ -371,12 +382,9 @@ class hr_workers_comp_claim(osv.Model):
                     restricted += days
                 else:
                     raise ERPError('Bug!', 'unknown restriction state: %r' % last_restriction)
-                print('duty_id:', note.duty_id)
                 if note.restriction != 'est':
                     last_restriction = note.restriction
                 else:
-                    print('\nnote.restriction:', note.restriction)
-                    print('note.duty_id:', note.duty_id.id, note.duty_id.name, '\n')
                     if note.duty_id.id == est_light_duty.id:
                         last_restriction = 'light'
                     elif note.duty_id.id == est_cleared.id:
@@ -384,10 +392,10 @@ class hr_workers_comp_claim(osv.Model):
                     else:
                         raise Exception('bad duty_id: %s' % (note.duty_id, ))
                 last_date = note.date
+                last_note = note
             if today_added:
-                last_duty = notes[-2].duty_id
-            print('\nyears:', years, '\nno duty:', no_duty, '\nrestricted:', restricted, '\n')
-            return years, restricted, no_duty, last_duty
+                last_note = notes[-2]
+            return years, restricted, no_duty, last_note
         #
         # main function
         #
@@ -409,11 +417,12 @@ class hr_workers_comp_claim(osv.Model):
         estimated_notes = _sort_notes(notes_ids, estimate=True)
         if not (actual_notes or estimated_notes):
             return res
-        years, restricted_300, no_duty_300, last_duty = _calc_notes(estimated_notes, estimate=True)
-        actual_years, restricted, no_duty, last_duty = _calc_notes(actual_notes)
+        years, restricted_300, no_duty_300, _, = _calc_notes(estimated_notes, estimate=True)
+        actual_years, restricted, no_duty, last_note = _calc_notes(actual_notes)
         years.update(actual_years)
 
-        value['restriction_state_id'] = last_duty.id
+        value['restriction_state_id'] = last_note.duty_id.id
+        value['restriction_type'] = last_note.restriction
         value['total_days'] = int(restricted + no_duty)
         value['total_days_300'] = int(restricted_300 + no_duty_300)
         value['restricted_duty_total'] = int(restricted)
@@ -454,6 +463,22 @@ class hr_workers_comp_claim(osv.Model):
         return True
 
     def button_hr_workers_comp_close(self, cr, uid, ids, context=None):
+        [id] = ids
+        closable_restriction_ids = [
+                r['res_id']
+                for r in self.pool.get('ir.model.data').read(
+                    cr, uid,
+                    [
+                        ('model','=','hr.workers_comp.duty_type'),
+                        ('name','in',['employee_returned_to_work', 'employee_cleared_to_work']),
+                    ],
+                    fields=['res_id'],
+                    context=context,
+                )
+        ]
+        claim = self.browse(cr, uid, id, context=context)
+        if claim.restriction_type != 'none' or claim.restriction_state_id.id not in closable_restriction_ids:
+            raise ERPError('Invalid State', 'Claim cannot be closed in its current state')
         return self.write(cr, uid, ids, {'state': 'closed'}, context=context)
 
     def button_hr_workers_comp_reopen(self, cr, uid, ids, context=None):
@@ -481,14 +506,7 @@ class hr_workers_comp_duty_type(osv.Model):
     _columns = {
         'active': fields.boolean('Active'),
         'name': fields.char('Description', size=128),
-        'restriction': fields.selection((
-                ('full', 'No duties'),
-                ('light', 'Light Duties'),
-                ('none', 'Normal duties'),
-                ('na', 'N/A'),
-            ),
-            'Restriction level',
-            ),
+        'restriction': fields.selection(RestrictionType, 'Restriction level'),
         }
 
     _defaults = {
@@ -510,16 +528,7 @@ class hr_workers_comp_history(osv.Model):
         'write_uid': fields.many2one('res.users', 'Entered by'),
         'evaluation_date': fields.date('Effective Date', help='date this entry takes effect', required=True, oldname='effective_date'),
         'note': fields.text('Note', required=True),
-        'restriction': fields.selection((
-                ('full', 'No duties'),
-                ('light', 'Light Duties'),
-                ('none', 'Regular duties'),
-                ('est', 'Estimate'),
-                ('na', 'N/A'),
-            ),
-            'Restriction level',
-            required=True,
-            ),
+        'restriction': fields.selection(RestrictionType, 'Restriction level', required=True),
         'duty_id': fields.many2one('hr.workers_comp.duty_type', 'Duty Level', required=True),
         }
 
@@ -587,6 +596,8 @@ class workers_comp_hr(osv.Model):
         {'base.group_hr_manager': ['worker_comp_claim_ids']},
         )
 
+
+# helpers
 
 class DayCounter(object):
 
@@ -744,6 +755,7 @@ class DayCounter(object):
 
     def __str__(self):
         return str(self.value)
+
 
 
 class YearCounter(object):
