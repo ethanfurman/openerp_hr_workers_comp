@@ -439,6 +439,13 @@ class hr_workers_comp_claim(osv.Model):
         year_total = YearCounter('Total')
         # add yearly info
         for year in sorted(years.values(), key=lambda y: ((1, 0)[y.estimate], y.year)):
+            if (
+                    year.estimate
+                    and last_note.restriction == 'none'
+                    and last_note.date.year == injury_date.year
+                ):
+                # estimate not needed, skip it
+                continue
             year_html += year.html_row()
             if not year.estimate:
                 year_total.full += year.full
