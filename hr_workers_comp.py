@@ -65,7 +65,7 @@ class hr_workers_comp_claim(osv.Model):
             'claim2injury_rel', 'claim_id', 'injury_id',
             string='Injury',
             ),
-        'injury_date': fields.date('Injury Date'),
+        'injury_date': fields.date('Injury Date', required=True),
         'location_id': fields.many2one('hr.department', 'Accident Location'),
         'notes': fields.text('Notes'),
         'notes_ids': fields.one2many('hr.workers_comp.history', 'claim_id', 'Notes'),
