@@ -65,7 +65,7 @@
                             ~td
                                 @days_by_year widget='html' readonly='1' options="{'no_embed': True}" nolabel='1'
                     ~hr colspan='4'
-                    ~group
+                    ~group attrs="{'invisible': [('injury_date','=',False)]}"
                         ~separator $History colspan='4'
                         @notes_ids nolabel='1' context="{'default_claim_id': active_id}" colspan='4' on_change='onchange_dates(injury_date, notes_ids, state)'
                             ~tree default_order='evaluation_date'
