@@ -330,6 +330,8 @@ class hr_workers_comp_claim(osv.Model):
             years = {}
             restricted = DayCounter()
             no_duty = DayCounter()
+            if not notes:
+                return years, restricted, no_duty, False
             last_note = notes[-1]
             today_added = False
             # check if last entry is earlier than today
@@ -421,8 +423,8 @@ class hr_workers_comp_claim(osv.Model):
         actual_years, restricted, no_duty, last_note = _calc_notes(actual_notes)
         years.update(actual_years)
 
-        value['restriction_state_id'] = last_note.duty_id.id
-        value['restriction_type'] = last_note.restriction
+        value['restriction_state_id'] = last_note and last_note.duty_id.id
+        value['restriction_type'] = last_note and last_note.restriction
         value['total_days'] = int(restricted + no_duty)
         value['total_days_300'] = int(restricted_300 + no_duty_300)
         value['restricted_duty_total'] = int(restricted)
