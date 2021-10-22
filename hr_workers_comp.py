@@ -4,7 +4,9 @@ import logging
 from aenum import NamedTuple
 from datetime import timedelta
 from fnx import date
+from openerp import SUPERUSER_ID as SU
 from openerp.exceptions import ERPError
+from openerp.tools import self_ids
 from osv import osv, fields
 
 _logger = logging.getLogger(__name__)
@@ -50,7 +52,34 @@ class hr_workers_comp_claim(osv.Model):
             res[rec.id] = self.onchange_dates(cr, uid, rec.id, rec.injury_date, rec.notes_ids, rec.state, context=context)['value']
         return res
 
+    def _get_name(self, cr, uid, ids, field_name, arg, context=None):
+        res = {}
+        for claim in self.browse(cr, SU, ids, context=context):
+            claim_date = date(claim.injury_date).strftime('%Y-%m-%d')
+            res[claim.id] = '%s: %s' % (claim_date, claim.employee_id.resource_id.name)
+        return res
+
+    def _get_resource_ids(key_table, cr, uid, ids, context=None):
+        # ids are the ids changed in the foreign table twice removed (resource.resource)
+        # get the ids in hr.employee that track those ressource.resource ids, then
+        # return the ids in this table that link to the hr.employee records
+        self = key_table.pool.get('hr.workers_comp.claim')
+        resource = key_table.pool.get('resource.resource')
+        employee_ids = resource.search(cr, SU, [('resource_id','in',ids)], context=None)
+        return self.search(cr, SU, [('employee_id','in',employee_ids)], context=None)
+
+
+
     _columns = {
+        'name': fields.function(
+            _get_name,
+            type='char',
+            string='Name',
+            store={
+                'hr.workers_comp.claim': (self_ids, ['injury_date'], 10),
+                'resource.resource': (_get_resource_ids, ['name'], 10),
+                }
+            ),
         'state': fields.selection(
             [('open', 'Open'), ('closed', 'Closed')],
             'Status',
@@ -530,10 +559,11 @@ class hr_workers_comp_history(osv.Model):
     _name = 'hr.workers_comp.history'
     _desc = "workers comp claim history entry"
     _order = "evaluation_date"
+    _rec_name = 'id'
 
     _columns = {
         'claim_id': fields.many2one('hr.workers_comp.claim', 'Claim #'),
-        'create_date': fields.date('Date note entered', readonly=True),
+        'create_date': fields.datetime('Date note entered', readonly=True),
         'write_uid': fields.many2one('res.users', 'Entered by'),
         'evaluation_date': fields.date('Effective Date', help='date this entry takes effect', required=True, oldname='effective_date'),
         'note': fields.text('Note', required=True),
