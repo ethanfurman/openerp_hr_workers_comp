@@ -59,13 +59,13 @@ class hr_workers_comp_claim(osv.Model):
             res[claim.id] = '%s: %s' % (claim_date, claim.employee_id.resource_id.name)
         return res
 
-    def _get_resource_ids(key_table, cr, uid, ids, context=None):
+    def _get_resource_ids(resource, cr, uid, resource_ids, context=None):
         # ids are the ids changed in the foreign table twice removed (resource.resource)
         # get the ids in hr.employee that track those ressource.resource ids, then
         # return the ids in this table that link to the hr.employee records
-        self = key_table.pool.get('hr.workers_comp.claim')
-        resource = key_table.pool.get('resource.resource')
-        employee_ids = resource.search(cr, SU, [('resource_id','in',ids)], context=None)
+        self = resource.pool.get('hr.workers_comp.claim')
+        resource = resource.pool.get('resource.resource')
+        employee_ids = resource.search(cr, SU, [('id','in',resource_ids)], context=None)
         return self.search(cr, SU, [('employee_id','in',employee_ids)], context=None)
 
 
